@@ -80,9 +80,7 @@ fun WelcomeScreen(onGetStarted: () -> Unit, onHaveAccount: () -> Unit) {
                 Text("Built to protect borrowers", color = Color.White, style = MaterialTheme.typography.labelMedium)
             }
             Spacer(Modifier.height(24.dp))
-            Box(Modifier.size(92.dp).background(Color.White, RoundedCornerShape(26.dp)), contentAlignment = Alignment.Center) {
-                ShieldLogo(size = 58.dp)
-            }
+            ShieldLogo(size = 88.dp)
             Spacer(Modifier.height(18.dp))
             Text("FINSHIELD", color = EmeraldSoft, style = MaterialTheme.typography.labelSmall)
             Spacer(Modifier.height(14.dp))

@@ -52,6 +52,7 @@ import com.finshield.app.ui.components.IconTile
 import com.finshield.app.ui.components.LoadingBlock
 import com.finshield.app.ui.components.SectionHeader
 import com.finshield.app.ui.components.SecondaryButton
+import com.finshield.app.ui.components.ShieldLogo
 import com.finshield.app.ui.screens.auth.StatusBarIcons
 import com.finshield.app.ui.screens.history.AnalysisRow
 import com.finshield.app.ui.screens.history.HistoryViewModel
@@ -173,10 +174,8 @@ private fun HeroCard(onAnalyze: () -> Unit) {
             .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Box(Modifier.size(52.dp).background(NavyLight, RoundedCornerShape(16.dp)), contentAlignment = Alignment.Center) {
-                Icon(Icons.Filled.VerifiedUser, null, tint = EmeraldSoft, modifier = Modifier.size(26.dp))
-            }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            ShieldLogo(size = 48.dp)
             Text(
                 "DOCUMENT REVIEW",
                 color = Navy,

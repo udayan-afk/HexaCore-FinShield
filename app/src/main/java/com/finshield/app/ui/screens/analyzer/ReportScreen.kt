@@ -28,6 +28,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.ListAlt
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.CheckCircle
@@ -37,11 +38,26 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Info
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
+import androidx.core.content.FileProvider
+import com.finshield.app.domain.pdf.FinShieldPdfGenerator
+import com.finshield.app.domain.pdf.PdfExportOptions
+import com.finshield.app.domain.pdf.PdfReportContentBuilder
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -147,6 +163,49 @@ fun ReportScreen(
     var selectedClauseFinding by remember { mutableStateOf<ClauseViewData?>(null) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showFullTextDialog by remember { mutableStateOf(false) }
+    var isGeneratingPdf by remember { mutableStateOf(false) }
+    var includeFullTextAppendix by remember { mutableStateOf(false) }
+    var downloadedFile by remember { mutableStateOf<File?>(null) }
+    var showDownloadSuccessDialog by remember { mutableStateOf(false) }
+
+    val suggestedFilename = remember(report) {
+        PdfReportContentBuilder.buildReportFilename(report)
+    }
+
+    val createDocumentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/pdf")
+    ) { uri: Uri? ->
+        if (uri == null) {
+            return@rememberLauncherForActivityResult
+        }
+
+        isGeneratingPdf = true
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    context.contentResolver.openOutputStream(uri)?.use { os ->
+                        FinShieldPdfGenerator(
+                            report = report,
+                            options = PdfExportOptions(includeFullTextAppendix = includeFullTextAppendix)
+                        ).writeTo(os)
+                    } ?: throw IllegalStateException("Unable to open output destination for writing.")
+
+                    val cached = FinShieldPdfGenerator.generateToCache(
+                        context = context,
+                        report = report,
+                        options = PdfExportOptions(includeFullTextAppendix = includeFullTextAppendix)
+                    )
+                    downloadedFile = cached
+                }
+                showDownloadSuccessDialog = true
+                snackbar.showSnackbar("Report PDF successfully saved to your device.")
+            } catch (e: Exception) {
+                snackbar.showSnackbar("Failed to download PDF: ${e.message ?: "Unknown error"}")
+            } finally {
+                isGeneratingPdf = false
+            }
+        }
+    }
 
     if (showFullTextDialog) {
         FullDocumentTextViewerDialog(
@@ -184,6 +243,27 @@ fun ReportScreen(
                 shareReportSummary(context, report)
             },
             onDelete = { showDeleteConfirm = true },
+        )
+
+        // 2. Prominent Download Report as PDF Section
+        DownloadPdfCard(
+            isGenerating = isGeneratingPdf,
+            includeAppendix = includeFullTextAppendix,
+            hasAppendixPages = report.rawPages.isNotEmpty(),
+            appendixPagesCount = report.rawPages.size,
+            downloadedFile = downloadedFile,
+            onToggleAppendix = { includeFullTextAppendix = it },
+            onDownloadPdf = {
+                if (!isGeneratingPdf) {
+                    createDocumentLauncher.launch(suggestedFilename)
+                }
+            },
+            onOpenPdf = { file ->
+                openPdfFile(context, file)
+            },
+            onSharePdf = { file ->
+                sharePdfFile(context, file, report.documentName)
+            },
         )
 
         // Full Extracted Text & Grounding Card
@@ -269,6 +349,11 @@ fun ReportScreen(
             onOpenCompleteBreakdown = { onOpenCompleteBreakdown(report.id) },
             onOpenOcrReview = { onOpenOcrReview(report.id) },
             onVerifyRepayment = prefillAndNavigateCalculator,
+            onDownloadPdf = {
+                if (!isGeneratingPdf) {
+                    createDocumentLauncher.launch(suggestedFilename)
+                }
+            },
             onShare = { shareReportSummary(context, report) },
         )
 
@@ -279,6 +364,71 @@ fun ReportScreen(
     // Modal dialog for viewing exact clause text
     selectedClauseFinding?.let { clauseData ->
         ClauseDetailDialog(clauseData = clauseData, onDismiss = { selectedClauseFinding = null })
+    }
+
+    // Modal dialog for successful PDF download (Open & Share)
+    if (showDownloadSuccessDialog && downloadedFile != null) {
+        val file = downloadedFile!!
+        AlertDialog(
+            onDismissRequest = { showDownloadSuccessDialog = false },
+            icon = {
+                Icon(
+                    Icons.Filled.CheckCircle,
+                    contentDescription = null,
+                    tint = EmeraldDark,
+                    modifier = Modifier.size(36.dp),
+                )
+            },
+            title = {
+                Text(
+                    "Report PDF Downloaded",
+                    fontWeight = FontWeight.Bold,
+                    color = Navy,
+                    textAlign = TextAlign.Center,
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "Your FinShield analysis report has been generated and saved successfully to your selected location.",
+                        color = TextSecondary,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        file.name,
+                        color = Navy,
+                        fontWeight = FontWeight.SemiBold,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            },
+            confirmButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = {
+                        sharePdfFile(context, file, report.documentName)
+                    }) {
+                        Icon(Icons.Filled.Share, null, modifier = Modifier.size(16.dp), tint = Navy)
+                        Spacer(Modifier.width(4.dp))
+                        Text("Share", color = Navy, fontWeight = FontWeight.Bold)
+                    }
+                    TextButton(onClick = {
+                        showDownloadSuccessDialog = false
+                        openPdfFile(context, file)
+                    }) {
+                        Icon(Icons.AutoMirrored.Filled.OpenInNew, null, modifier = Modifier.size(16.dp), tint = EmeraldDark)
+                        Spacer(Modifier.width(4.dp))
+                        Text("Open PDF", color = EmeraldDark, fontWeight = FontWeight.Bold)
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDownloadSuccessDialog = false }) {
+                    Text("Done", color = TextSecondary)
+                }
+            },
+            containerColor = CardWhite,
+            shape = RoundedCornerShape(20.dp),
+        )
     }
 
     // Modal dialog for delete confirmation
@@ -1499,9 +1649,16 @@ private fun ReportFooterActions(
     onOpenCompleteBreakdown: () -> Unit,
     onOpenOcrReview: () -> Unit,
     onVerifyRepayment: () -> Unit,
+    onDownloadPdf: () -> Unit,
     onShare: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        PrimaryButton(
+            text = "Download Report (PDF)",
+            onClick = onDownloadPdf,
+            leadingIcon = Icons.Filled.PictureAsPdf,
+        )
+
         SecondaryButton(
             text = "Review & Edit Extracted Fields",
             onClick = onOpenOcrReview,
@@ -1557,3 +1714,170 @@ private fun shareReportSummary(context: Context, report: AnalysisReport) {
     }
     context.startActivity(Intent.createChooser(intent, "Share FinShield Report"))
 }
+
+// ---------------------------------------------------------------------------
+// 10. DOWNLOAD PDF CARD & FILE HELPERS
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun DownloadPdfCard(
+    isGenerating: Boolean,
+    includeAppendix: Boolean,
+    hasAppendixPages: Boolean,
+    appendixPagesCount: Int,
+    downloadedFile: File?,
+    onToggleAppendix: (Boolean) -> Unit,
+    onDownloadPdf: () -> Unit,
+    onOpenPdf: (File) -> Unit,
+    onSharePdf: (File) -> Unit,
+) {
+    FinCard {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .background(EmeraldTint, RoundedCornerShape(12.dp)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Filled.PictureAsPdf,
+                        contentDescription = "PDF Document",
+                        tint = EmeraldDark,
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Download Analysis Report",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Navy,
+                    )
+                    Text(
+                        text = "Comprehensive multi-page PDF formatted to print or share",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary,
+                    )
+                }
+            }
+
+            if (hasAppendixPages) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(CardWhite, RoundedCornerShape(10.dp))
+                        .border(1.dp, DividerColor, RoundedCornerShape(10.dp))
+                        .clickable(enabled = !isGenerating) { onToggleAppendix(!includeAppendix) }
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(
+                        checked = includeAppendix,
+                        onCheckedChange = onToggleAppendix,
+                        enabled = !isGenerating,
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = EmeraldButton,
+                            checkmarkColor = Color.White,
+                            uncheckedColor = TextHint,
+                        ),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Include full extracted document text appendix",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = TextPrimary,
+                        )
+                        Text(
+                            text = "Preserves all $appendixPagesCount raw extracted pages with character counts",
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            color = TextSecondary,
+                        )
+                    }
+                }
+            }
+
+            PrimaryButton(
+                text = if (isGenerating) "Generating PDF Report..." else "Download PDF",
+                onClick = onDownloadPdf,
+                loading = isGenerating,
+                enabled = !isGenerating,
+                leadingIcon = Icons.Filled.Download,
+            )
+
+            if (downloadedFile != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        SecondaryButton(
+                            text = "Open PDF",
+                            onClick = { onOpenPdf(downloadedFile) },
+                            leadingIcon = Icons.AutoMirrored.Filled.OpenInNew,
+                        )
+                    }
+                    Box(modifier = Modifier.weight(1f)) {
+                        SecondaryButton(
+                            text = "Share PDF",
+                            onClick = { onSharePdf(downloadedFile) },
+                            leadingIcon = Icons.Filled.Share,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun openPdfFile(context: Context, file: File) {
+    try {
+        val uri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            file,
+        )
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/pdf")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(intent)
+    } catch (e: Exception) {
+        Toast.makeText(
+            context,
+            "No PDF viewer application found on device.",
+            Toast.LENGTH_LONG,
+        ).show()
+    }
+}
+
+private fun sharePdfFile(context: Context, file: File, documentName: String) {
+    try {
+        val uri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            file,
+        )
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "application/pdf"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_SUBJECT, "FinShield Report: $documentName")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(intent, "Share FinShield PDF Report"))
+    } catch (e: Exception) {
+        Toast.makeText(
+            context,
+            "Could not share PDF: ${e.message}",
+            Toast.LENGTH_SHORT,
+        ).show()
+    }
+}
+

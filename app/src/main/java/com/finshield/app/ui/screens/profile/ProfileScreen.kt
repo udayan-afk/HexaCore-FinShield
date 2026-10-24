@@ -40,6 +40,7 @@ import com.finshield.app.ui.components.DisclaimerText
 import com.finshield.app.ui.components.FinCard
 import com.finshield.app.ui.components.IconTile
 import com.finshield.app.ui.components.ScreenScaffold
+import com.finshield.app.ui.components.ShieldLogo
 import com.finshield.app.ui.screens.auth.StatusBarIcons
 import com.finshield.app.ui.theme.CardWhite
 import com.finshield.app.ui.theme.DividerColor
@@ -149,6 +150,7 @@ fun ProfileScreen(session: Session, onHistory: () -> Unit, onSignOut: () -> Unit
 private fun InfoAlert(title: String, body: String, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
+        icon = { ShieldLogo(size = 40.dp) },
         title = { Text(title) },
         text = { Text(body) },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Close", color = EmeraldDark) } },

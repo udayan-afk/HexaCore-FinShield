@@ -102,7 +102,7 @@ fun LoginScreen(
                 subtitle = "Understand Before You Borrow.",
                 onBack = onBack,
                 modifier = Modifier.statusBarsPadding(),
-                leading = { ShieldLogo(size = 30.dp) },
+                leading = { ShieldLogo(size = 34.dp) },
             )
         },
     ) { inner ->
@@ -267,7 +267,7 @@ fun RegisterScreen(
                 subtitle = "Understand Before You Borrow.",
                 onBack = onBack,
                 modifier = Modifier.statusBarsPadding(),
-                leading = { ShieldLogo(size = 30.dp) },
+                leading = { ShieldLogo(size = 34.dp) },
             )
         },
     ) { inner ->

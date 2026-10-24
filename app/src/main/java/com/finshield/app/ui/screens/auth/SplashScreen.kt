@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.finshield.app.ui.components.FinShieldFullLogo
 import com.finshield.app.ui.components.ShieldLogo
 import com.finshield.app.ui.theme.EmeraldSoft
 import com.finshield.app.ui.theme.Navy
@@ -54,25 +55,8 @@ fun SplashScreen(onFinished: () -> Unit) {
             verticalArrangement = Arrangement.Center,
             modifier = Modifier.alpha(alpha.value)
         ) {
-            ShieldLogo(size = 96.dp)
-            Spacer(Modifier.height(20.dp))
-            Text(
-                text = "FinShield",
-                color = Color.White,
-                style = MaterialTheme.typography.headlineMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 0.5.sp
-                )
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = "Understand Before You Borrow",
-                color = EmeraldSoft,
-                style = MaterialTheme.typography.bodyMedium.copy(
-                    fontWeight = FontWeight.SemiBold
-                )
-            )
-            Spacer(Modifier.height(24.dp))
+            FinShieldFullLogo(size = 230.dp)
+            Spacer(Modifier.height(18.dp))
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),

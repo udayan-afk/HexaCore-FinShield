@@ -1,8 +1,12 @@
 package com.finshield.app.ui.components
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import com.finshield.app.R
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -66,30 +70,43 @@ import com.finshield.app.ui.theme.TextHint
 import com.finshield.app.ui.theme.TextPrimary
 import com.finshield.app.ui.theme.TextSecondary
 
-/** The FinShield shield-with-check mark. Drawn in code so it scales crisply. */
+/**
+ * The official FinShield logo emblem (shield, loan document, rupee magnifier and ribbon).
+ * Sourced directly from the official branding artwork and rendered with ContentScale.Fit.
+ */
 @Composable
-fun ShieldLogo(size: Dp, modifier: Modifier = Modifier, shieldColor: Color = EmeraldButton, checkColor: Color = Color.White) {
-    Canvas(modifier = modifier.size(size).semantics { contentDescription = "FinShield logo" }) {
-        val w = this.size.width
-        val h = this.size.height
-        val shield = Path().apply {
-            moveTo(w * 0.5f, h * 0.04f)
-            lineTo(w * 0.92f, h * 0.2f)
-            lineTo(w * 0.92f, h * 0.52f)
-            cubicTo(w * 0.92f, h * 0.76f, w * 0.74f, h * 0.9f, w * 0.5f, h * 0.98f)
-            cubicTo(w * 0.26f, h * 0.9f, w * 0.08f, h * 0.76f, w * 0.08f, h * 0.52f)
-            lineTo(w * 0.08f, h * 0.2f)
-            close()
-        }
-        drawPath(shield, shieldColor)
-        val check = Path().apply {
-            moveTo(w * 0.3f, h * 0.5f)
-            lineTo(w * 0.45f, h * 0.65f)
-            lineTo(w * 0.72f, h * 0.36f)
-        }
-        drawPath(check, checkColor, style = Stroke(width = w * 0.09f, cap = StrokeCap.Round, join = StrokeJoin.Round))
-    }
+fun ShieldLogo(
+    size: Dp,
+    modifier: Modifier = Modifier,
+    shieldColor: Color = EmeraldButton,
+    checkColor: Color = Color.White,
+    useFullLogo: Boolean = false,
+) {
+    val resId = if (useFullLogo) R.drawable.finshield_logo_full else R.drawable.finshield_logo_emblem
+    Image(
+        painter = painterResource(id = resId),
+        contentDescription = "FinShield logo",
+        contentScale = ContentScale.Fit,
+        modifier = modifier.size(size).semantics { contentDescription = "FinShield logo" },
+    )
 }
+
+/**
+ * The full official FinShield brand logo, featuring the emblem, wordmark, and "Understand Before You Borrow" tagline.
+ */
+@Composable
+fun FinShieldFullLogo(
+    modifier: Modifier = Modifier,
+    size: Dp = 220.dp,
+) {
+    Image(
+        painter = painterResource(id = R.drawable.finshield_logo_full),
+        contentDescription = "FinShield: Understand Before You Borrow",
+        contentScale = ContentScale.Fit,
+        modifier = modifier.size(size),
+    )
+}
+
 
 /** Full-width emerald call-to-action. Shows a spinner while [loading]. */
 @Composable
@@ -99,6 +116,7 @@ fun PrimaryButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     loading: Boolean = false,
+    leadingIcon: ImageVector? = null,
     trailingIcon: ImageVector? = null,
 ) {
     val shape = RoundedCornerShape(18.dp)
@@ -116,6 +134,9 @@ fun PrimaryButton(
             CircularProgressIndicator(color = Color.White, strokeWidth = 2.5.dp, modifier = Modifier.size(24.dp))
         } else {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (leadingIcon != null) {
+                    Icon(leadingIcon, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                }
                 Text(text, color = Color.White, style = MaterialTheme.typography.labelLarge)
                 if (trailingIcon != null) {
                     Icon(trailingIcon, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
