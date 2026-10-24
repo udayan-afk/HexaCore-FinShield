@@ -6,11 +6,18 @@ import android.util.Patterns
 object AuthValidation {
     const val MIN_PASSWORD_LENGTH = 8
 
+    private val EMAIL_REGEX = "^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$".toRegex()
+
     fun email(value: String): String? {
         val v = value.trim()
+        val isValid = try {
+            Patterns.EMAIL_ADDRESS?.matcher(v)?.matches() ?: EMAIL_REGEX.matches(v)
+        } catch (e: Throwable) {
+            EMAIL_REGEX.matches(v)
+        }
         return when {
             v.isEmpty() -> "Enter your email address"
-            !Patterns.EMAIL_ADDRESS.matcher(v).matches() -> "Enter a valid email address"
+            !isValid -> "Enter a valid email address"
             else -> null
         }
     }

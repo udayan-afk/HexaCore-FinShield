@@ -9,9 +9,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-data class AuthUiState(val loading: Boolean = false, val error: String? = null)
+data class AuthUiState(
+    val loading: Boolean = false,
+    val error: String? = null,
+    val successMessage: String? = null,
+)
 
-/** Drives Login/Register through [AuthRepository]; unaware of whether it is the demo or a Firebase implementation. */
+/** Drives Login/Register through Firebase-backed [AuthRepository]. */
 class AuthViewModel(private val repo: AuthRepository = AppContainer.auth) : ViewModel() {
     private val _state = MutableStateFlow(AuthUiState())
     val state: StateFlow<AuthUiState> = _state.asStateFlow()
@@ -24,13 +28,32 @@ class AuthViewModel(private val repo: AuthRepository = AppContainer.auth) : View
         run(onSuccess) { repo.register(name.trim(), email.trim(), password) }
     }
 
-    fun continueInDemoMode(onSuccess: () -> Unit) {
-        repo.enterDemoMode()
-        onSuccess()
+    fun sendPasswordReset(email: String, onSent: () -> Unit) {
+        val emailError = AuthValidation.email(email)
+        if (emailError != null) {
+            _state.value = AuthUiState(error = emailError)
+            return
+        }
+        if (_state.value.loading) return
+        _state.value = AuthUiState(loading = true)
+        viewModelScope.launch {
+            repo.sendPasswordReset(email.trim())
+                .onSuccess {
+                    _state.value = AuthUiState(successMessage = "Password reset link sent to $email. Please check your inbox.")
+                    onSent()
+                }
+                .onFailure {
+                    _state.value = AuthUiState(error = it.message ?: "Failed to send password reset email. Please try again.")
+                }
+        }
     }
 
     fun clearError() {
         if (_state.value.error != null) _state.value = _state.value.copy(error = null)
+    }
+
+    fun clearSuccessMessage() {
+        if (_state.value.successMessage != null) _state.value = _state.value.copy(successMessage = null)
     }
 
     private fun run(onSuccess: () -> Unit, block: suspend () -> Result<*>) {

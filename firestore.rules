@@ -1,0 +1,37 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // User profiles collection: each authenticated user has access only to their own document
+    match /users/{userId} {
+      // 1. Reading profile: only the owner can read
+      allow read: if request.auth != null && request.auth.uid == userId;
+
+      // 2. Creating profile: only the owner can create their document with strict schema validation
+      allow create: if request.auth != null 
+        && request.auth.uid == userId
+        && request.resource.data.keys().hasOnly(['uid', 'fullName', 'email', 'createdAt', 'updatedAt'])
+        && request.resource.data.uid == userId
+        && request.resource.data.email is string
+        && request.resource.data.email.size() > 3
+        && request.resource.data.fullName is string
+        && request.resource.data.fullName.size() >= 2;
+
+      // 3. Updating profile: only the owner can update permitted fields; uid cannot be mutated
+      allow update: if request.auth != null 
+        && request.auth.uid == userId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['fullName', 'email', 'updatedAt'])
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.fullName is string
+        && request.resource.data.fullName.size() >= 2;
+
+      // 4. Deleting profile: disallowed directly from client app
+      allow delete: if false;
+    }
+
+    // Default deny for all other paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

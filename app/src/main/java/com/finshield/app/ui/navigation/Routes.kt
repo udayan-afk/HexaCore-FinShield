@@ -22,6 +22,6 @@ object Routes {
     /** Destinations shown with the bottom navigation bar. */
     val bottomTabs = listOf(DASHBOARD, ANALYZE, COMPARE, PROFILE)
 
-    /** Everything behind sign-in / demo mode. */
+    /** Everything behind authenticated Firebase sign-in. */
     val protectedRoutes = setOf(DASHBOARD, ANALYZE, COMPARE, PROFILE, CALCULATOR, HISTORY, REPORT, COMPLETE_BREAKDOWN)
 }

@@ -45,9 +45,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.finshield.app.data.auth.Session
 import com.finshield.app.data.auth.greetingName
-import com.finshield.app.data.auth.isDemo
 import com.finshield.app.data.history.HistoryState
-import com.finshield.app.ui.components.DemoBadge
 import com.finshield.app.ui.components.EmptyState
 import com.finshield.app.ui.components.ErrorState
 import com.finshield.app.ui.components.IconTile
@@ -106,10 +104,6 @@ fun DashboardScreen(
                 Text(greeting, color = EmeraldDark, style = MaterialTheme.typography.labelSmall)
                 Text("Hi, $name", style = MaterialTheme.typography.headlineMedium, color = TextPrimary)
                 Text("Let's make your next loan clearer.", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-                if (session.isDemo) {
-                    Spacer(Modifier.height(6.dp))
-                    DemoBadge()
-                }
             }
             Box(
                 Modifier.size(48.dp).background(EmeraldTint, RoundedCornerShape(50)).clickable(onClick = onProfile),
@@ -143,13 +137,6 @@ fun DashboardScreen(
                             }
                         } else {
                             h.items.take(2).forEach { AnalysisRow(it, onClick = { onOpenReport(it.id) }) }
-                            if (session.isDemo) {
-                                Text(
-                                    "Demo entries: built-in sample data, not your documents.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = TextSecondary,
-                                )
-                            }
                         }
                     }
                 }

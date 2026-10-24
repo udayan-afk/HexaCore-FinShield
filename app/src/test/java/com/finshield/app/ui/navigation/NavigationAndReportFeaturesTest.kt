@@ -21,7 +21,7 @@ class NavigationAndReportFeaturesTest {
         assertEquals("complete_breakdown/doc_123", Routes.completeBreakdown("doc_123"))
         assertEquals("complete_breakdown/sample", Routes.completeBreakdown("sample"))
 
-        // Must be in protectedRoutes so unauthorized users cannot access without session/demo
+        // Must be in protectedRoutes so unauthorized users cannot access without an authenticated Firebase session
         assertTrue(Routes.protectedRoutes.contains(Routes.COMPLETE_BREAKDOWN))
     }
 

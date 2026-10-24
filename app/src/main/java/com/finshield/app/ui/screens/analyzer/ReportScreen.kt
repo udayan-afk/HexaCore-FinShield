@@ -303,7 +303,7 @@ private fun ReportHeaderSection(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     StatusChip("Verified OCR", EmeraldTint, EmeraldDark)
                     if (report.isSample) {
-                        StatusChip("Sample Demo", AmberTint, AmberDark)
+                        StatusChip("Sample Document", AmberTint, AmberDark)
                     } else {
                         StatusChip("${report.pagesCount} Page${if (report.pagesCount != 1) "s" else ""}", SegmentTrack, TextSecondary)
                     }

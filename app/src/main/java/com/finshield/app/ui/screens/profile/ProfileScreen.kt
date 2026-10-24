@@ -36,12 +36,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.finshield.app.data.auth.Session
 import com.finshield.app.data.auth.greetingName
-import com.finshield.app.data.auth.isDemo
 import com.finshield.app.ui.components.DisclaimerText
-import com.finshield.app.ui.components.DemoBadge
 import com.finshield.app.ui.components.FinCard
 import com.finshield.app.ui.components.IconTile
-import com.finshield.app.ui.components.SampleNotice
 import com.finshield.app.ui.components.ScreenScaffold
 import com.finshield.app.ui.screens.auth.StatusBarIcons
 import com.finshield.app.ui.theme.CardWhite
@@ -63,11 +60,7 @@ fun ProfileScreen(session: Session, onHistory: () -> Unit, onSignOut: () -> Unit
     StatusBarIcons(darkIcons = true)
     var dialog by rememberSaveable { mutableStateOf<InfoDialog?>(null) }
     val name = session.greetingName()
-    val email = when (session) {
-        is Session.Demo -> session.email
-        is Session.Authenticated -> session.email
-        Session.SignedOut -> null
-    }
+    val email = (session as? Session.Authenticated)?.email ?: ""
 
     ScreenScaffold(title = "Profile", subtitle = "Account and settings", onBack = null, handleNavBarInset = false) {
         FinCard {
@@ -81,29 +74,37 @@ fun ProfileScreen(session: Session, onHistory: () -> Unit, onSignOut: () -> Unit
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(name, style = MaterialTheme.typography.titleMedium, color = TextPrimary)
-                    Text(email ?: "No email (guest)", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-                    if (session.isDemo) {
-                        Spacer(Modifier.height(4.dp))
-                        DemoBadge()
+                    Text(email.ifBlank { "Firebase Authenticated User" }, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                    Spacer(Modifier.height(4.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier
+                            .background(EmeraldTint, RoundedCornerShape(6.dp))
+                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                    ) {
+                        Box(
+                            Modifier
+                                .size(6.dp)
+                                .background(EmeraldDark, RoundedCornerShape(50))
+                        )
+                        Text(
+                            "Firebase Account",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                            color = EmeraldDark,
+                        )
                     }
                 }
             }
         }
 
-        if (session.isDemo) {
-            SampleNotice(
-                "You're in Demo Mode",
-                "This is not a real authenticated session. No account exists, data stays on this device, and history shows sample entries only.",
-            )
-        }
-
         FinCard {
             Column {
-                SettingsRow(Icons.Filled.History, "Analysis history", "View saved and demo analyses", onHistory)
+                SettingsRow(Icons.Filled.History, "Analysis history", "View saved analyses", onHistory)
                 RowDivider()
                 SettingsRow(Icons.Filled.Info, "About FinShield", "Purpose and disclaimer") { dialog = InfoDialog.ABOUT }
                 RowDivider()
-                SettingsRow(Icons.Filled.Policy, "Privacy", "How your documents are handled") { dialog = InfoDialog.PRIVACY }
+                SettingsRow(Icons.Filled.Policy, "Privacy & Cloud", "How your account and documents are handled") { dialog = InfoDialog.PRIVACY }
             }
         }
 
@@ -119,13 +120,13 @@ fun ProfileScreen(session: Session, onHistory: () -> Unit, onSignOut: () -> Unit
         ) {
             Icon(Icons.AutoMirrored.Filled.Logout, null, tint = ErrorRed)
             Text(
-                if (session.isDemo) "Exit Demo Mode" else "Sign out",
+                "Sign out",
                 style = MaterialTheme.typography.titleSmall,
                 color = ErrorRed,
             )
         }
 
-        Text("FinShield 0.1.0 · frontend preview", style = MaterialTheme.typography.bodySmall, color = TextSecondary, modifier = Modifier.fillMaxWidth())
+        Text("FinShield 0.1.0 · Firebase Connected", style = MaterialTheme.typography.bodySmall, color = TextSecondary, modifier = Modifier.fillMaxWidth())
         DisclaimerText()
     }
 
@@ -136,9 +137,9 @@ fun ProfileScreen(session: Session, onHistory: () -> Unit, onSignOut: () -> Unit
                 "FinShield provides informational estimates, not legal, lending or financial advice.",
         ) { dialog = null }
         InfoDialog.PRIVACY -> InfoAlert(
-            "Privacy",
-            "PDFs are opened only through Android's file picker, so FinShield needs no storage permission.\n\n" +
-                "In this frontend preview nothing is uploaded and no account data is stored.",
+            "Privacy & Cloud",
+            "Authentication and user profiles are securely managed via Google Firebase Authentication and Cloud Firestore.\n\n" +
+                "Your account profile is protected by strict per-user Firestore security rules.",
         ) { dialog = null }
         null -> Unit
     }

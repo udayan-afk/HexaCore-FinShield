@@ -85,21 +85,6 @@ fun SecondaryButton(
     }
 }
 
-/** Small amber pill that marks demo-only sessions and sample content. */
-@Composable
-fun DemoBadge(modifier: Modifier = Modifier, text: String = "DEMO MODE") {
-    Row(
-        modifier = modifier
-            .background(AmberTint, RoundedCornerShape(50))
-            .padding(horizontal = 10.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(Modifier.size(6.dp).background(Amber, RoundedCornerShape(50)))
-        Spacer(Modifier.size(6.dp))
-        Text(text, color = AmberDark, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, letterSpacing = 0.8.sp))
-    }
-}
-
 /** Amber notice used to label sample / illustrative content. */
 @Composable
 fun SampleNotice(title: String, message: String, modifier: Modifier = Modifier) {

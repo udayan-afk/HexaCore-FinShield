@@ -38,7 +38,7 @@ fun FinShieldNavHost(navController: NavHostController = rememberNavController())
     val route = navController.currentBackStackEntryAsState().value?.destination?.route
     val showBottomBar = route in Routes.bottomTabs
 
-    // Unauthorized-screen handling: leaving the session (sign out / exit demo) always returns to Welcome.
+    // Unauthorized-screen handling: signed-out users cannot access protected screens.
     LaunchedEffect(session, route) {
         if (session is Session.SignedOut && route in Routes.protectedRoutes) {
             navController.navigate(Routes.WELCOME) { popUpTo(navController.graph.id) { inclusive = true } }
@@ -93,10 +93,6 @@ fun FinShieldNavHost(navController: NavHostController = rememberNavController())
                 WelcomeScreen(
                     onGetStarted = { navController.navigate(Routes.ONBOARDING) },
                     onHaveAccount = { navController.navigate(Routes.LOGIN) },
-                    onDemo = {
-                        auth.enterDemoMode()
-                        enterApp()
-                    },
                 )
             }
             composable(Routes.ONBOARDING) {

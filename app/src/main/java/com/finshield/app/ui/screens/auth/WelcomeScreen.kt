@@ -49,7 +49,7 @@ import com.finshield.app.ui.theme.TextPrimary
 import com.finshield.app.ui.theme.TextSecondary
 
 @Composable
-fun WelcomeScreen(onGetStarted: () -> Unit, onHaveAccount: () -> Unit, onDemo: () -> Unit) {
+fun WelcomeScreen(onGetStarted: () -> Unit, onHaveAccount: () -> Unit) {
     StatusBarIcons(darkIcons = false)
     Box(Modifier.fillMaxSize().background(AppBackground)) {
         // Navy hero with a diagonal lower edge
@@ -106,10 +106,9 @@ fun WelcomeScreen(onGetStarted: () -> Unit, onHaveAccount: () -> Unit, onDemo: (
             FeatureRow(Icons.Filled.Calculate, "Independent repayment check", "Verify lender calculations in seconds")
             Spacer(Modifier.height(20.dp))
             PrimaryButton("Get Started", onClick = onGetStarted, trailingIcon = Icons.AutoMirrored.Filled.ArrowForward)
-            Spacer(Modifier.height(10.dp))
-            SecondaryButton("Continue in Demo Mode", onClick = onDemo)
-            Spacer(Modifier.height(2.dp))
-            LinkText("I already have an account", onClick = onHaveAccount)
+            Spacer(Modifier.height(12.dp))
+            SecondaryButton("Sign In to Existing Account", onClick = onHaveAccount)
+            Spacer(Modifier.height(4.dp))
             DisclaimerText()
             Spacer(Modifier.height(10.dp))
         }

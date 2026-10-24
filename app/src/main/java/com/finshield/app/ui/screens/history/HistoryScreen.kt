@@ -54,8 +54,8 @@ fun HistoryScreen(onBack: () -> Unit, onOpenReport: (String) -> Unit, onAnalyze:
 
     ScreenScaffold(title = "Analysis history", subtitle = "Your saved reviews", onBack = onBack) {
         SampleNotice(
-            "Demo entries",
-            "These are built-in sample entries stored only in this app session. They are not your documents and not from Firebase.",
+            "Sample analyses",
+            "These reference analyses illustrate review capabilities. Your analyzed documents will appear here.",
         )
         when (val s = state) {
             HistoryState.Loading -> LoadingBlock(message = "Loading analyses…")
@@ -63,14 +63,14 @@ fun HistoryScreen(onBack: () -> Unit, onOpenReport: (String) -> Unit, onAnalyze:
             is HistoryState.Content -> {
                 if (s.items.isEmpty()) {
                     EmptyState(Icons.Filled.Description, "No saved analyses", "Analyses you save will appear here.") {
-                        SecondaryButton("Restore demo entries", vm::restoreSamples)
+                        SecondaryButton("Restore sample entries", vm::restoreSamples)
                         androidx.compose.foundation.layout.Spacer(Modifier.size(8.dp))
                         SecondaryButton("Analyze an agreement", onAnalyze)
                     }
                 } else {
                     s.items.forEach { AnalysisRow(it, onClick = { onOpenReport(it.id) }) }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                        LinkText("Clear demo entries", onClick = vm::clear)
+                        LinkText("Clear sample entries", onClick = vm::clear)
                     }
                 }
             }
