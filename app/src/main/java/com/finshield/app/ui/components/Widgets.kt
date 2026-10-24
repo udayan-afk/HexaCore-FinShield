@@ -122,9 +122,11 @@ fun SampleNotice(title: String, message: String, modifier: Modifier = Modifier) 
 @Composable
 fun StatusChip(text: String, background: Color, content: Color, modifier: Modifier = Modifier) {
     Text(
-        text,
+        text = text,
         color = content,
         style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold),
+        maxLines = 1,
+        softWrap = false,
         modifier = modifier.background(background, RoundedCornerShape(50)).padding(horizontal = 10.dp, vertical = 5.dp),
     )
 }

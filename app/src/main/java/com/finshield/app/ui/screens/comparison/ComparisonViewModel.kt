@@ -37,15 +37,16 @@ data class ComparisonUiState(
     val sortOption: ComparisonSortOption = ComparisonSortOption.STARTING_RATE,
     val principal: Double = 500_000.0,
     val tenureMonths: Int = 36,
-    val selectedOfferIds: Set<String> = setOf("sbi", "hdfc-bank", "bajaj-finance"),
+    val selectedOfferIds: Set<String> = emptySet(),
     val allOffers: List<LoanOffer> = emptyList(),
     val displayedOffers: List<ComputedLoanOffer> = emptyList(),
     val comparisonTableOffers: List<ComputedLoanOffer> = emptyList(),
     val lowestCostOfferId: String? = null,
     val isEditingTerms: Boolean = false,
     val selectedOfferForDetails: ComputedLoanOffer? = null,
-    val datasetVersion: String = "2026.10-research",
-    val datasetRefreshDate: String = "14 Oct 2026",
+    val datasetVersion: String = "2026.10-directory",
+    val datasetRefreshDate: String = "24 Oct 2026",
+    val loadError: String? = null,
 )
 
 class ComparisonViewModel(
@@ -60,10 +61,12 @@ class ComparisonViewModel(
     init {
         repository.getAllOffers().onEach { offers ->
             val initialSelected = if (offers.size >= 3) {
-                // Pick 1 Public, 1 Private, 1 NBFC for a rich initial comparison
-                val publicOne = offers.firstOrNull { it.lenderClassification == LenderClassification.PUBLIC_BANK }?.id
-                val privateOne = offers.firstOrNull { it.lenderClassification == LenderClassification.PRIVATE_BANK }?.id
-                val nbfcOne = offers.firstOrNull { it.lenderClassification == LenderClassification.NBFC }?.id
+                val publicOne = offers.firstOrNull { it.category == LoanCategory.PERSONAL && it.lenderClassification == LenderClassification.PUBLIC_BANK }?.id
+                    ?: offers.firstOrNull { it.lenderClassification == LenderClassification.PUBLIC_BANK }?.id
+                val privateOne = offers.firstOrNull { it.category == LoanCategory.PERSONAL && it.lenderClassification == LenderClassification.PRIVATE_BANK }?.id
+                    ?: offers.firstOrNull { it.lenderClassification == LenderClassification.PRIVATE_BANK }?.id
+                val nbfcOne = offers.firstOrNull { it.category == LoanCategory.PERSONAL && it.lenderClassification == LenderClassification.NBFC }?.id
+                    ?: offers.firstOrNull { it.lenderClassification == LenderClassification.NBFC }?.id
                 setOfNotNull(publicOne, privateOne, nbfcOne)
             } else {
                 offers.take(3).map { it.id }.toSet()
@@ -112,15 +115,22 @@ class ComparisonViewModel(
     }
 
     fun toggleOfferSelection(offerId: String) {
+        // Resolve ID with backward compatibility for plain lender slugs
+        val actualId = _state.value.allOffers.firstOrNull {
+            it.id == offerId || it.id == "$offerId-personal-loan" || it.id.startsWith("$offerId-")
+        }?.id ?: offerId
+
         val current = _state.value.selectedOfferIds
-        val updated = if (current.contains(offerId)) {
-            current - offerId
+        val isAlreadySelected = current.contains(actualId) || current.contains(offerId)
+
+        val updated = if (isAlreadySelected) {
+            current - actualId - offerId
         } else {
             if (current.size >= 4) {
                 // Keep max 4 selected offers for comparison table readability
-                (current.drop(1).toSet()) + offerId
+                (current.drop(1).toSet()) + actualId
             } else {
-                current + offerId
+                current + actualId
             }
         }
         _state.value = _state.value.copy(selectedOfferIds = updated)
@@ -179,13 +189,18 @@ class ComparisonViewModel(
             LenderTypeFilter.ALL -> Unit
         }
 
-        // Search query filter
+        // Search query filter: matches bank, product, loan type, description, security, notes, rate, fee
         if (s.searchQuery.isNotBlank()) {
             val q = s.searchQuery.trim().lowercase()
             filtered = filtered.filter {
                 it.lenderName.lowercase().contains(q) ||
-                    it.publishedInterestRate.lowercase().contains(q) ||
+                    it.offerName.lowercase().contains(q) ||
+                    it.category.label.lowercase().contains(q) ||
+                    it.category.shortLabel.lowercase().contains(q) ||
+                    it.shortDescription.lowercase().contains(q) ||
+                    it.securityType.lowercase().contains(q) ||
                     it.eligibilityNotes.lowercase().contains(q) ||
+                    it.publishedInterestRate.lowercase().contains(q) ||
                     it.publishedProcessingFee.lowercase().contains(q) ||
                     it.lenderClassification.label.lowercase().contains(q) ||
                     it.lenderClassification.shortLabel.lowercase().contains(q)
@@ -213,8 +228,8 @@ class ComparisonViewModel(
         val sortedOffers = when (s.sortOption) {
             ComparisonSortOption.STARTING_RATE -> {
                 offersWithLowestCost.sortedWith(
-                    compareBy<ComputedLoanOffer> { !it.offer.isComparableStartingRate }
-                        .thenBy { it.offer.annualRatePercent }
+                    compareBy<ComputedLoanOffer> { !it.offer.isComparableStartingRate || it.offer.minAnnualRate == null }
+                        .thenBy { it.offer.minAnnualRate ?: Double.MAX_VALUE }
                         .thenBy { it.offer.lenderName }
                 )
             }

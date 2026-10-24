@@ -4,12 +4,60 @@ import com.finshield.app.domain.calculator.InterestMethod
 import com.finshield.app.domain.calculator.LoanCalculator
 import com.finshield.app.domain.calculator.Money
 
-enum class LoanCategory(val label: String, val shortLabel: String) {
-    PERSONAL("Personal Loan", "Personal"),
-    HOME("Home Loan", "Home"),
-    EDUCATION("Education Loan", "Education"),
-    CAR("Car Loan", "Car"),
+enum class LoanCategory(
+    val label: String,
+    val shortLabel: String,
+    val isPopular: Boolean = false,
+) {
+    PERSONAL("Personal Loan", "Personal", isPopular = true),
+    HOME("Home Loan", "Home", isPopular = true),
+    EDUCATION("Education Loan", "Education", isPopular = true),
+    CAR("Car / Auto Loan", "Car / Auto", isPopular = true),
+    TWO_WHEELER("Two-Wheeler Loan", "Two-Wheeler", isPopular = true),
+    GOLD("Gold Loan", "Gold", isPopular = true),
+    BUSINESS("Business / MSME Loan", "Business / MSME", isPopular = true),
+    PROPERTY("Loan Against Property / Mortgage", "Against Property", isPopular = true),
+    AGRICULTURE("Agriculture / Kisan Loan", "Agriculture / Kisan"),
+    COMMERCIAL_VEHICLE("Commercial Vehicle Loan", "Commercial Vehicle"),
+    CONSUMER_DURABLE("Consumer Durable / EMI Loan", "Consumer Durable"),
+    MEDICAL("Medical / Healthcare Loan", "Medical / Healthcare"),
+    SECURITIES("Loan Against Securities / Deposits", "Against Securities"),
+    FIXED_DEPOSIT("Loan Against Fixed Deposit", "Against Fixed Deposit"),
+    INSURANCE_POLICY("Loan Against Insurance Policy", "Against Insurance"),
+    PROVIDENT_FUND("Loan Against Provident Fund / Retirement Benefit", "Against PF"),
+    RENEWABLE_ENERGY("Loan for Renewable Energy / Solar", "Renewable / Solar"),
+    MICROFINANCE("Microfinance / Group Loan", "Microfinance"),
+    OVERDRAFT("Overdraft / Cash Credit", "Overdraft / CC"),
     OTHER("Other Loans", "Other");
+
+    companion object {
+        fun fromLabel(raw: String): LoanCategory {
+            val clean = raw.trim()
+            return entries.firstOrNull { it.label.equals(clean, ignoreCase = true) }
+                ?: when {
+                    clean.contains("personal", ignoreCase = true) -> PERSONAL
+                    clean.contains("home", ignoreCase = true) -> HOME
+                    clean.contains("education", ignoreCase = true) -> EDUCATION
+                    clean.contains("two-wheeler", ignoreCase = true) || clean.contains("2-wheeler", ignoreCase = true) -> TWO_WHEELER
+                    clean.contains("car", ignoreCase = true) || clean.contains("auto", ignoreCase = true) -> CAR
+                    clean.contains("gold", ignoreCase = true) -> GOLD
+                    clean.contains("msme", ignoreCase = true) || clean.contains("business", ignoreCase = true) -> BUSINESS
+                    clean.contains("agriculture", ignoreCase = true) || clean.contains("kisan", ignoreCase = true) -> AGRICULTURE
+                    clean.contains("commercial vehicle", ignoreCase = true) -> COMMERCIAL_VEHICLE
+                    clean.contains("consumer durable", ignoreCase = true) -> CONSUMER_DURABLE
+                    clean.contains("medical", ignoreCase = true) || clean.contains("healthcare", ignoreCase = true) -> MEDICAL
+                    clean.contains("property", ignoreCase = true) || clean.contains("mortgage", ignoreCase = true) -> PROPERTY
+                    clean.contains("securities", ignoreCase = true) -> SECURITIES
+                    clean.contains("fixed deposit", ignoreCase = true) || clean.contains("fd", ignoreCase = true) -> FIXED_DEPOSIT
+                    clean.contains("insurance", ignoreCase = true) -> INSURANCE_POLICY
+                    clean.contains("provident", ignoreCase = true) || clean.contains("retirement", ignoreCase = true) -> PROVIDENT_FUND
+                    clean.contains("solar", ignoreCase = true) || clean.contains("renewable", ignoreCase = true) -> RENEWABLE_ENERGY
+                    clean.contains("microfinance", ignoreCase = true) || clean.contains("group", ignoreCase = true) -> MICROFINANCE
+                    clean.contains("overdraft", ignoreCase = true) || clean.contains("cash credit", ignoreCase = true) -> OVERDRAFT
+                    else -> OTHER
+                }
+        }
+    }
 }
 
 data class LoanOffer(
@@ -32,7 +80,7 @@ data class LoanOffer(
 
     // Real Lender Catalogue attributes (Feature 3)
     val lenderClassification: LenderClassification = LenderClassification.PRIVATE_BANK,
-    val publishedInterestRate: String = "$annualRatePercent% p.a.",
+    val publishedInterestRate: String = if (annualRatePercent > 0) "$annualRatePercent% p.a." else "Rate not listed — check lender",
     val isMonthlyRate: Boolean = false,
     val monthlyRatePercent: Double? = null,
     val isComparableStartingRate: Boolean = true,
@@ -41,6 +89,20 @@ data class LoanOffer(
     val datasetStatus: String = "Indicative — verify with lender",
     val datasetVersion: String = "2026.10-research",
     val publishedProcessingFee: String = "",
+
+    // 30-Bank Loan Directory extensions
+    val shortDescription: String = "",
+    val securityType: String = "",
+    val typicalTenure: String = "",
+    val commonDocuments: String = "",
+    val prepaymentForeclosure: String = "",
+    val availabilityStatus: String = "Verify on bank website",
+    val ratesChargesUrl: String? = null,
+    val ctaLabel: String = "Visit bank website",
+    val lastChecked: String = "2026-10-24",
+    val appDisclaimer: String = "",
+    val minAnnualRate: Double? = null,
+    val maxAnnualRate: Double? = null,
 ) {
     val lenderInitial: String get() = lenderName.firstOrNull()?.uppercase() ?: "L"
 }
@@ -78,12 +140,35 @@ object OfferCalculator {
             else -> "Nil / Zero"
         }
 
-        // If rate is a monthly rate or starting rate is not comparable, do not calculate misleading values
-        if (offer.isMonthlyRate || !offer.isComparableStartingRate || offer.annualRatePercent <= 0) {
-            val note = if (offer.isMonthlyRate) {
-                "Monthly rate (${offer.publishedInterestRate}). Not directly comparable to annual bank rates. Verify official APR with lender before comparing."
-            } else {
-                "Rate is offer-dependent or capped (${offer.publishedInterestRate}). Direct EMI calculation requires a confirmed starting rate from lender."
+        // 1. Overdraft / Cash Credit: Revolving credit facility; interest applies to utilized amount
+        if (offer.category == LoanCategory.OVERDRAFT) {
+            return ComputedLoanOffer(
+                offer = offer,
+                principal = principal,
+                tenureMonths = tenureMonths,
+                installment = null,
+                totalRepayment = null,
+                totalInterest = null,
+                feeDisplay = feeDisplay,
+                feeWithGst = null,
+                totalCost = null,
+                indicativeApr = null,
+                isLowestCost = false,
+                isSelectedForComparison = false,
+                calculationNote = "Revolving overdraft facility: Interest applies only to drawn balance; monthly term EMI does not apply. Verify renewal fee and drawing limit.",
+            )
+        }
+
+        // 2. Non-standard structures, missing rates or monthly rates
+        val isMissingRate = offer.minAnnualRate == null && (offer.annualRatePercent <= 0.0 || !offer.isComparableStartingRate)
+        if (offer.isMonthlyRate || !offer.isComparableStartingRate || isMissingRate) {
+            val note = when {
+                offer.isMonthlyRate ->
+                    "Monthly rate (${offer.publishedInterestRate}). Not directly comparable to annual bank rates. Verify official APR with lender before comparing."
+                isMissingRate ->
+                    "Rate not listed in directory. Direct EMI calculation requires a confirmed interest rate from the lender."
+                else ->
+                    "Rate is offer-dependent or capped (${offer.publishedInterestRate}). Direct EMI calculation requires a confirmed starting rate from lender."
             }
 
             return ComputedLoanOffer(

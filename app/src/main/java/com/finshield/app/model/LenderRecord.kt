@@ -63,6 +63,8 @@ data class LenderRecord(
             datasetStatus = datasetStatus,
             datasetVersion = datasetVersion,
             publishedProcessingFee = publishedProcessingFee,
+            minAnnualRate = minAnnualRate,
+            maxAnnualRate = maxAnnualRate,
         )
     }
 }

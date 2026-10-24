@@ -183,16 +183,31 @@ fun ComparisonScreen(
 
         // 7. Offer Discovery Cards
         if (state.displayedOffers.isEmpty()) {
+            val emptyTitle = if (state.searchQuery.isNotBlank() || state.lenderTypeFilter != LenderTypeFilter.ALL) {
+                "No matching lenders"
+            } else {
+                "No records for ${state.selectedCategory.label}"
+            }
+            val emptyMessage = when {
+                state.loadError != null -> "Failed to load directory dataset: ${state.loadError}"
+                state.allOffers.isEmpty() -> "The loan directory could not be loaded from assets. Please verify loan_directory.csv."
+                state.searchQuery.isNotBlank() || state.lenderTypeFilter != LenderTypeFilter.ALL ->
+                    "No lenders match your search or filter criteria in ${state.selectedCategory.label}. Try adjusting filters or searching another keyword."
+                else ->
+                    "There are genuinely no directory records catalogued for ${state.selectedCategory.label} in the current dataset version."
+            }
             EmptyState(
                 icon = Icons.Default.Search,
-                title = "No lenders found",
-                message = "No lenders match your search or filter criteria. Try adjusting the lender type filter or searching another keyword.",
+                title = emptyTitle,
+                message = emptyMessage,
             ) {
-                SecondaryButton(
-                    text = "Reset all filters",
-                    onClick = vm::resetFilters,
-                    modifier = Modifier.width(200.dp),
-                )
+                if (state.searchQuery.isNotBlank() || state.lenderTypeFilter != LenderTypeFilter.ALL) {
+                    SecondaryButton(
+                        text = "Reset all filters",
+                        onClick = vm::resetFilters,
+                        modifier = Modifier.width(200.dp),
+                    )
+                }
             }
         } else {
             state.displayedOffers.forEach { offer ->
@@ -287,14 +302,14 @@ private fun DatasetInfoBanner(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    "Lender Research Catalogue ($totalLenders Lenders)",
+                    "30-Bank Loan Directory ($totalLenders Offers)",
                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                     color = Navy,
                 )
                 StatusChip("v$datasetVersion", SegmentTrack, TextSecondary)
             }
             Text(
-                "Static research dataset as of $refreshDate. Not live bank rates. Displayed rates are indicative starting terms and must be verified with the lender before applying.",
+                "Directory catalogued as of $refreshDate across 19 loan types. Displayed rates and terms are indicative guidance; verify live terms and availability with the bank before applying.",
                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                 color = TextSecondary,
             )
@@ -303,7 +318,7 @@ private fun DatasetInfoBanner(
 }
 
 // ---------------------------------------------------------------------------
-// 2. LOAN CATEGORY SELECTOR
+// 2. LOAN CATEGORY SELECTOR (POPULAR CATEGORIES + MORE LOAN TYPES PICKER)
 // ---------------------------------------------------------------------------
 
 @Composable
@@ -311,12 +326,37 @@ private fun LoanCategorySelector(
     selectedCategory: LoanCategory,
     onSelect: (LoanCategory) -> Unit,
 ) {
+    var moreMenuExpanded by remember { mutableStateOf(false) }
+
+    val popularCategories = remember {
+        LoanCategory.entries.filter { it.isPopular }
+    }
+    val moreCategories = remember {
+        LoanCategory.entries.filter { !it.isPopular }
+    }
+
+    val visibleCategories = remember(selectedCategory) {
+        if (selectedCategory.isPopular) popularCategories
+        else popularCategories + selectedCategory
+    }
+
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            "Loan Category",
-            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-            color = Navy,
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                "Loan Category",
+                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                color = Navy,
+            )
+            Text(
+                selectedCategory.label,
+                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                color = EmeraldDark,
+            )
+        }
 
         Row(
             modifier = Modifier
@@ -326,8 +366,9 @@ private fun LoanCategorySelector(
                 .background(SegmentTrack)
                 .padding(4.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            LoanCategory.entries.forEach { cat ->
+            visibleCategories.forEach { cat ->
                 val selected = cat == selectedCategory
                 Box(
                     modifier = Modifier
@@ -343,7 +384,7 @@ private fun LoanCategorySelector(
                             },
                         )
                         .clickable { onSelect(cat) }
-                        .padding(horizontal = 16.dp),
+                        .padding(horizontal = 14.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
@@ -353,6 +394,82 @@ private fun LoanCategorySelector(
                         ),
                         color = if (selected) Navy else TextSecondary,
                     )
+                }
+            }
+
+            // More Categories Picker
+            Box {
+                val isMoreSelected = !selectedCategory.isPopular
+                Row(
+                    modifier = Modifier
+                        .height(38.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .then(
+                            if (isMoreSelected) {
+                                Modifier
+                                    .border(BorderStroke(1.dp, EmeraldDark), RoundedCornerShape(10.dp))
+                                    .background(EmeraldTint)
+                            } else {
+                                Modifier.background(CardWhite.copy(alpha = 0.7f))
+                            }
+                        )
+                        .clickable { moreMenuExpanded = true }
+                        .padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        "More (${moreCategories.size})",
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = if (isMoreSelected) FontWeight.Bold else FontWeight.SemiBold,
+                        ),
+                        color = if (isMoreSelected) EmeraldDark else Navy,
+                    )
+                    Icon(
+                        Icons.Default.ArrowDropDown,
+                        contentDescription = "More loan types",
+                        tint = if (isMoreSelected) EmeraldDark else Navy,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+
+                DropdownMenu(
+                    expanded = moreMenuExpanded,
+                    onDismissRequest = { moreMenuExpanded = false },
+                    modifier = Modifier.background(CardWhite),
+                ) {
+                    moreCategories.forEach { cat ->
+                        val isSelected = cat == selectedCategory
+                        DropdownMenuItem(
+                            text = {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        cat.label,
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        ),
+                                        color = if (isSelected) EmeraldDark else TextPrimary,
+                                    )
+                                    if (isSelected) {
+                                        Icon(
+                                            Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = EmeraldDark,
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                    }
+                                }
+                            },
+                            onClick = {
+                                onSelect(cat)
+                                moreMenuExpanded = false
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -662,7 +779,10 @@ private fun AtAGlanceComparisonTable(
 
                     // Estimated EMI
                     TableCell(
-                        text = computed.installment?.let { Money.inr2(it) } ?: "Verify APR",
+                        text = computed.installment?.let { Money.inr2(it) }
+                            ?: if (computed.offer.category == LoanCategory.OVERDRAFT) "Overdraft"
+                            else if (computed.offer.minAnnualRate == null) "Unlisted"
+                            else "Verify APR",
                         isHeader = false,
                         textColor = if (computed.installment != null) TextPrimary else AmberDark,
                         isBold = computed.installment != null,
@@ -670,9 +790,9 @@ private fun AtAGlanceComparisonTable(
                     )
                     HorizontalDivider(color = DividerColor)
 
-                    // Max Loan
+                    // Max Loan / Tenure
                     TableCell(
-                        text = computed.offer.rawMaxLoanAmount.ifBlank { "—" },
+                        text = computed.offer.rawMaxLoanAmount.ifBlank { computed.offer.typicalTenure.ifBlank { "—" } },
                         isHeader = false,
                         textColor = TextPrimary,
                         fontSize = 11,
@@ -753,6 +873,7 @@ private fun LenderDiscoveryCard(
     onToggleCompare: () -> Unit,
     onViewDetails: () -> Unit,
 ) {
+    val context = LocalContext.current
     val o = offer.offer
     val isLowest = offer.isLowestCost
 
@@ -807,68 +928,163 @@ private fun LenderDiscoveryCard(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            // Header: Avatar, Name, Type Chip & Indicative Badge
+            // A & B: Bank Identity Header (Avatar + Full-Width Flexible Bank Name & Category Chips)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(
                     modifier = Modifier
-                        .size(44.dp)
+                        .size(46.dp)
                         .clip(CircleShape)
                         .background(typeBg),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        o.lenderInitial,
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, color = typeColor),
+                        text = o.lenderInitial,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = typeColor,
+                            fontSize = 18.sp,
+                        ),
                     )
                 }
 
-                Spacer(Modifier.width(10.dp))
+                Spacer(Modifier.width(12.dp))
 
-                Column(modifier = Modifier.weight(1f)) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
                     Text(
-                        o.lenderName,
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        text = o.lenderName,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 17.sp,
+                        ),
                         color = Navy,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                     )
+
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(top = 2.dp),
+                        modifier = Modifier.fillMaxWidth(),
                     ) {
-                        StatusChip(o.lenderClassification.shortLabel, typeBg, typeColor)
-                        StatusChip("Indicative", SegmentTrack, TextSecondary)
+                        StatusChip(
+                            text = o.lenderClassification.shortLabel,
+                            background = typeBg,
+                            content = typeColor,
+                        )
+                        StatusChip(
+                            text = o.category.shortLabel,
+                            background = SegmentTrack,
+                            content = TextSecondary,
+                        )
+                        if (o.availabilityStatus.isNotBlank()) {
+                            StatusChip(
+                                text = if (o.availabilityStatus.contains("Verify", ignoreCase = true)) "Directory" else "Indicative",
+                                background = Color(0xFFF1F5F9),
+                                content = TextSecondary,
+                            )
+                        }
                     }
                 }
+            }
 
-                // Published Rate Pill
-                Column(horizontalAlignment = Alignment.End) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(SegmentTrack)
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
-                    ) {
-                        Text(
-                            o.publishedInterestRate,
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                            color = Navy,
-                        )
-                    }
+            // C: Dedicated Full-Width Interest Rate & Pricing Status Banner
+            val rateBg = when {
+                o.minAnnualRate != null -> EmeraldTint
+                o.isMonthlyRate -> AmberTint.copy(alpha = 0.5f)
+                else -> SegmentTrack
+            }
+            val rateTextColor = when {
+                o.minAnnualRate != null -> EmeraldDark
+                o.isMonthlyRate -> AmberDark
+                else -> Navy
+            }
+            val rateStatusLabel = when {
+                o.isMonthlyRate -> "Monthly rate"
+                o.minAnnualRate == null -> "Rate unlisted"
+                else -> "Published rack rate"
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(rateBg)
+                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.weight(1f, fill = false),
+                ) {
                     Text(
-                        if (o.isMonthlyRate) "Monthly Rate" else "Published Rate",
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
-                        color = TextHint,
-                        modifier = Modifier.padding(top = 2.dp),
+                        text = "Interest Rate:",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 12.sp,
+                        ),
+                        color = TextSecondary,
+                    )
+                    Text(
+                        text = o.publishedInterestRate,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.5.sp,
+                        ),
+                        color = rateTextColor,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+
+                Spacer(Modifier.width(8.dp))
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(CardWhite.copy(alpha = 0.85f))
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                ) {
+                    Text(
+                        text = rateStatusLabel,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 11.sp,
+                        ),
+                        color = when {
+                            o.minAnnualRate != null -> EmeraldDark
+                            o.isMonthlyRate -> AmberDark
+                            else -> TextSecondary
+                        },
+                        maxLines = 1,
+                        softWrap = false,
                     )
                 }
             }
 
-            HorizontalDivider(color = DividerColor)
+            // D: Loan Description (Full-Width Area)
+            if (o.shortDescription.isNotBlank()) {
+                Text(
+                    text = o.shortDescription,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontSize = 12.5.sp,
+                        lineHeight = 18.sp,
+                    ),
+                    color = TextSecondary,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
 
-            // Monthly rate notice (CASHe, Home Credit, MoneyTap, PaySense)
+            // Monthly rate notice
             if (o.isMonthlyRate) {
                 Row(
                     modifier = Modifier
@@ -887,31 +1103,68 @@ private fun LenderDiscoveryCard(
                 }
             }
 
-            // 2-Column Key Specs Grid
-            Row(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Overdraft Structure Notice
+            if (o.category == LoanCategory.OVERDRAFT) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFFF1F5F9), RoundedCornerShape(10.dp))
+                        .padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(Icons.Default.Info, contentDescription = null, tint = Navy, modifier = Modifier.size(16.dp))
+                    Text(
+                        "Revolving credit facility: interest charged only on the drawn balance; standard monthly EMI does not apply.",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Medium),
+                        color = Navy,
+                    )
+                }
+            }
+
+            HorizontalDivider(color = DividerColor)
+
+            // E: 2-Column Key Financial Specs Grid
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                // Column 1: Estimated Monthly EMI & Security / Collateral
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
                     SpecItem(
                         label = "Estimated Monthly EMI",
-                        value = offer.installment?.let { Money.inr2(it) } ?: "Verify APR with lender",
+                        value = when {
+                            offer.installment != null -> "${Money.inr2(offer.installment)} / mo"
+                            o.category == LoanCategory.OVERDRAFT -> "Revolving (No fixed EMI)"
+                            o.minAnnualRate == null -> "— (Rate unlisted)"
+                            else -> "Verify with lender"
+                        },
                         valueBold = offer.installment != null,
-                        color = if (offer.installment != null) Navy else AmberDark,
+                        color = if (offer.installment != null) Navy else TextSecondary,
                     )
                     SpecItem(
-                        label = "Max Loan Amount",
-                        value = o.rawMaxLoanAmount.ifBlank { "Subject to profile" },
+                        label = "Security / Collateral",
+                        value = o.securityType.ifBlank { "Subject to bank rules" },
                     )
                 }
 
-                Spacer(Modifier.width(12.dp))
-
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Column 2: Processing Fee & Indicative Tenure
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
                     SpecItem(
                         label = "Processing Fee",
-                        value = o.publishedProcessingFee.ifBlank { "Disclosed in agreement" },
+                        value = o.publishedProcessingFee.ifBlank { "Check official product page" },
                     )
                     SpecItem(
-                        label = "Max Tenure",
-                        value = "${o.maxTenureMonths} months",
+                        label = "Indicative Tenure",
+                        value = o.typicalTenure.ifBlank {
+                            if (o.maxTenureMonths > 0) "Up to ${o.maxTenureMonths} months" else "Check official terms"
+                        },
                     )
                 }
             }
@@ -951,76 +1204,220 @@ private fun LenderDiscoveryCard(
                 }
             }
 
-            // Freshness & Source Note
+            // F: Freshness & Source Note
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    "Source: Paisabazaar (${o.sourceAsOf.ifBlank { "14 Oct 2026" }})",
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
+                    text = "Source: ${if (o.isVerifiedSource) "Bank Directory" else "Research"} (${o.sourceAsOf.ifBlank { "24 Oct 2026" }})",
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                     color = TextHint,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
                 )
+                Spacer(Modifier.width(8.dp))
                 Text(
-                    "Status: Indicative",
-                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp, fontStyle = FontStyle.Italic),
+                    text = "Status: ${o.availabilityStatus.ifBlank { "Indicative" }}",
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontSize = 11.sp,
+                        fontStyle = FontStyle.Italic,
+                    ),
                     color = TextHint,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
 
             HorizontalDivider(color = DividerColor)
 
-            // Bottom Actions: Compare toggle + View details
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                // Compare Toggle
+            // G: Responsive Action Buttons
+            val targetUrl = o.officialUrl ?: o.ratesChargesUrl
+            val hasUrl = !targetUrl.isNullOrBlank()
+
+            if (hasUrl) {
+                // Primary action buttons row (Compare + Visit Website)
                 Row(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .then(
-                            if (offer.isSelectedForComparison) {
-                                Modifier
-                                    .background(EmeraldTint)
-                                    .border(BorderStroke(1.dp, EmeraldDark), RoundedCornerShape(8.dp))
-                            } else {
-                                Modifier
-                                    .background(SegmentTrack)
-                                    .border(BorderStroke(1.dp, DividerColor), RoundedCornerShape(8.dp))
-                            },
-                        )
-                        .clickable { onToggleCompare() }
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    Icon(
-                        if (offer.isSelectedForComparison) Icons.Default.Check else Icons.Default.SwapHoriz,
-                        contentDescription = null,
-                        tint = if (offer.isSelectedForComparison) EmeraldDark else TextPrimary,
-                        modifier = Modifier.size(14.dp),
-                    )
+                    // Compare Toggle Button (weight 1f)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(44.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .then(
+                                if (offer.isSelectedForComparison) {
+                                    Modifier
+                                        .background(EmeraldTint)
+                                        .border(BorderStroke(1.2.dp, EmeraldDark), RoundedCornerShape(10.dp))
+                                } else {
+                                    Modifier
+                                        .background(SegmentTrack)
+                                        .border(BorderStroke(1.dp, DividerColor), RoundedCornerShape(10.dp))
+                                }
+                            )
+                            .clickable { onToggleCompare() }
+                            .padding(horizontal = 8.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Icon(
+                                if (offer.isSelectedForComparison) Icons.Default.Check else Icons.Default.SwapHoriz,
+                                contentDescription = null,
+                                tint = if (offer.isSelectedForComparison) EmeraldDark else TextPrimary,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Text(
+                                text = if (offer.isSelectedForComparison) "In Comparison" else "+ Compare",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.5.sp,
+                                    color = if (offer.isSelectedForComparison) EmeraldDark else TextPrimary,
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+
+                    // Official Website Button (weight 1f)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(44.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(EmeraldTint)
+                            .border(BorderStroke(1.dp, EmeraldDark.copy(alpha = 0.4f)), RoundedCornerShape(10.dp))
+                            .clickable {
+                                try {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl))
+                                    context.startActivity(intent)
+                                } catch (_: Exception) {}
+                            }
+                            .padding(horizontal = 8.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                        ) {
+                            Text(
+                                text = o.ctaLabel.ifBlank { "Visit bank site" },
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.5.sp,
+                                    color = EmeraldDark,
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Icon(
+                                Icons.AutoMirrored.Filled.OpenInNew,
+                                contentDescription = null,
+                                tint = EmeraldDark,
+                                modifier = Modifier.size(14.dp),
+                            )
+                        }
+                    }
+                }
+
+                // Row 2: Secondary View Details Link (touch target 42dp)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(42.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { onViewDetails() },
+                    contentAlignment = Alignment.Center,
+                ) {
                     Text(
-                        if (offer.isSelectedForComparison) "In Comparison" else "+ Add to Compare",
-                        style = MaterialTheme.typography.labelSmall.copy(
+                        text = "View Product Details & Eligibility →",
+                        style = MaterialTheme.typography.labelMedium.copy(
                             fontWeight = FontWeight.Bold,
-                            color = if (offer.isSelectedForComparison) EmeraldDark else TextPrimary,
+                            fontSize = 13.sp,
+                            color = Navy,
                         ),
                     )
                 }
+            } else {
+                // Single Row when no URL is present
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(44.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .then(
+                                if (offer.isSelectedForComparison) {
+                                    Modifier
+                                        .background(EmeraldTint)
+                                        .border(BorderStroke(1.2.dp, EmeraldDark), RoundedCornerShape(10.dp))
+                                } else {
+                                    Modifier
+                                        .background(SegmentTrack)
+                                        .border(BorderStroke(1.dp, DividerColor), RoundedCornerShape(10.dp))
+                                }
+                            )
+                            .clickable { onToggleCompare() }
+                            .padding(horizontal = 8.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Icon(
+                                if (offer.isSelectedForComparison) Icons.Default.Check else Icons.Default.SwapHoriz,
+                                contentDescription = null,
+                                tint = if (offer.isSelectedForComparison) EmeraldDark else TextPrimary,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Text(
+                                text = if (offer.isSelectedForComparison) "In Comparison" else "+ Add to Compare",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.5.sp,
+                                    color = if (offer.isSelectedForComparison) EmeraldDark else TextPrimary,
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
 
-                // View Details
-                Text(
-                    "View Details & Notes",
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                    color = EmeraldDark,
-                    modifier = Modifier
-                        .clickable { onViewDetails() }
-                        .padding(4.dp),
-                )
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(44.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(CardWhite)
+                            .border(BorderStroke(1.dp, DividerColor), RoundedCornerShape(10.dp))
+                            .clickable { onViewDetails() }
+                            .padding(horizontal = 8.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "View Details →",
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                color = Navy,
+                            ),
+                        )
+                    }
+                }
             }
         }
     }
@@ -1033,20 +1430,26 @@ private fun SpecItem(
     valueBold: Boolean = false,
     color: Color = TextPrimary,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
         Text(
-            label,
-            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+            text = label,
+            style = MaterialTheme.typography.bodySmall.copy(
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.Medium,
+            ),
             color = TextSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
         Text(
-            value,
+            text = value,
             style = MaterialTheme.typography.bodyMedium.copy(
                 fontWeight = if (valueBold) FontWeight.Bold else FontWeight.SemiBold,
                 fontSize = 13.sp,
+                lineHeight = 17.sp,
             ),
             color = color,
-            maxLines = 2,
+            maxLines = 3,
             overflow = TextOverflow.Ellipsis,
         )
     }
@@ -1159,7 +1562,7 @@ private fun LenderDetailsDialog(
                     color = Navy,
                 )
                 Text(
-                    o.lenderClassification.label,
+                    "${o.category.label} • ${o.lenderClassification.label}",
                     style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
                     color = TextSecondary,
                 )
@@ -1171,31 +1574,65 @@ private fun LenderDetailsDialog(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 DetailRow("Lender Classification", o.lenderClassification.label)
+                DetailRow("Loan Category", o.category.label)
+                if (o.shortDescription.isNotBlank()) {
+                    DetailRow("Product / Purpose", o.shortDescription)
+                }
                 DetailRow("Published Interest Rate", o.publishedInterestRate, isBold = true)
-                DetailRow("Rate Type", if (o.isMonthlyRate) "Monthly Rate (Non-Annualised)" else "Annual Reducing Rate")
-                DetailRow("Published Processing Fee", o.publishedProcessingFee)
-                DetailRow("Maximum Loan Amount", o.rawMaxLoanAmount)
-                DetailRow("Maximum Tenure", "${o.maxTenureMonths} months")
+                DetailRow(
+                    "Rate Type",
+                    when {
+                        o.isMonthlyRate -> "Monthly Rate (Non-Annualised)"
+                        o.minAnnualRate == null -> "Rate Not Listed in Directory"
+                        else -> "Annual Reducing Rate"
+                    }
+                )
+                if (o.securityType.isNotBlank()) {
+                    DetailRow("Security / Collateral", o.securityType)
+                }
+                DetailRow("Typical Tenure", o.typicalTenure.ifBlank { "${o.maxTenureMonths} months" })
+                DetailRow("Published Processing Fee", o.publishedProcessingFee.ifBlank { "Check official product terms" })
+                if (o.prepaymentForeclosure.isNotBlank()) {
+                    DetailRow("Prepayment / Foreclosure", o.prepaymentForeclosure)
+                }
+                if (o.rawMaxLoanAmount.isNotBlank()) {
+                    DetailRow("Maximum Loan Amount", o.rawMaxLoanAmount)
+                }
+
                 HorizontalDivider(color = DividerColor)
 
+                // Financial Simulation Section
                 if (computedOffer.installment != null) {
                     DetailRow("Simulated Monthly EMI", Money.inr2(computedOffer.installment), isBold = true)
                     DetailRow("Simulated Total Repayment", Money.inr2(computedOffer.totalRepayment ?: 0.0))
                     DetailRow("Simulated Total Cost", Money.inr2(computedOffer.totalCost ?: 0.0), isBold = true, highlightColor = EmeraldDark)
                 } else {
                     Text(
-                        "Direct numeric comparison is not generated because the published rate is either monthly or offer-dependent. Confirm verified annual APR directly with ${o.lenderName}.",
+                        computedOffer.calculationNote ?: "Direct numeric comparison is not generated because the published rate is either monthly or offer-dependent. Confirm verified annual APR directly with ${o.lenderName}.",
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, fontStyle = FontStyle.Italic),
                         color = AmberDark,
                     )
                 }
 
                 HorizontalDivider(color = DividerColor)
-                DetailRow("Eligibility / Research Notes", o.eligibilityNotes)
-                DetailRow("Dataset Verification Status", o.datasetStatus)
-                DetailRow("Source As-Of Date", o.sourceAsOf)
+                DetailRow("Eligibility Summary", o.eligibilityNotes.ifBlank { "Check official product criteria" })
+                if (o.commonDocuments.isNotBlank()) {
+                    DetailRow("Common Documents", o.commonDocuments)
+                }
+                DetailRow("Availability Status", o.availabilityStatus)
+                DetailRow("Last Checked Date", o.sourceAsOf)
                 DetailRow("Dataset Version", o.datasetVersion)
 
+                if (o.appDisclaimer.isNotBlank()) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        o.appDisclaimer,
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp, fontStyle = FontStyle.Italic),
+                        color = TextHint,
+                    )
+                }
+
+                // Official Product URL Link
                 if (!o.officialUrl.isNullOrBlank()) {
                     Spacer(Modifier.height(4.dp))
                     Row(
@@ -1214,7 +1651,39 @@ private fun LenderDetailsDialog(
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
                         Text(
-                            "View Source Page on Paisabazaar",
+                            o.ctaLabel.ifBlank { "Visit Official Bank Product Page" },
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = Navy,
+                        )
+                        Icon(
+                            Icons.AutoMirrored.Filled.OpenInNew,
+                            contentDescription = null,
+                            tint = Navy,
+                            modifier = Modifier.size(14.dp),
+                        )
+                    }
+                }
+
+                // Rates & Charges URL Link
+                if (!o.ratesChargesUrl.isNullOrBlank()) {
+                    Spacer(Modifier.height(2.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(SegmentTrack)
+                            .clickable {
+                                try {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(o.ratesChargesUrl))
+                                    context.startActivity(intent)
+                                } catch (_: Exception) {}
+                            }
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(
+                            "View Official Rates & Charges Page",
                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                             color = Navy,
                         )
@@ -1254,7 +1723,7 @@ private fun DetailRow(
             label,
             style = MaterialTheme.typography.bodySmall,
             color = TextSecondary,
-            modifier = Modifier.weight(1.2f),
+            modifier = Modifier.weight(1.1f),
         )
         Text(
             value,
@@ -1263,7 +1732,7 @@ private fun DetailRow(
             ),
             color = highlightColor ?: TextPrimary,
             textAlign = TextAlign.End,
-            modifier = Modifier.weight(1.3f),
+            modifier = Modifier.weight(1.4f),
         )
     }
 }

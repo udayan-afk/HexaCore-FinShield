@@ -227,7 +227,7 @@ object LenderCsvParser {
     /**
      * RFC 4180 character-by-character parser handling quotes, internal commas, and line breaks.
      */
-    private fun parseCsvTokens(reader: BufferedReader): List<List<String>> {
+    fun parseCsvTokens(reader: BufferedReader): List<List<String>> {
         val rows = mutableListOf<List<String>>()
         val currentRow = mutableListOf<String>()
         val currentField = StringBuilder()
