@@ -147,6 +147,7 @@ fun FinShieldNavHost(navController: NavHostController = rememberNavController())
             composable(Routes.ANALYZE) {
                 AnalyzerScreen(
                     onOpenSampleReport = { openReport("sample") },
+                    onOpenReport = openReport,
                     onBack = {
                         val popped = navController.popBackStack()
                         if (!popped) {

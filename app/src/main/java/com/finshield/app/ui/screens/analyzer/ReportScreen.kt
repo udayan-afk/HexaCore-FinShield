@@ -51,7 +51,9 @@ import kotlin.math.abs
 @Composable
 fun ReportScreen(reportId: String, onBack: () -> Unit, onOpenCalculator: () -> Unit) {
     StatusBarIcons(darkIcons = true)
-    val report = remember(reportId) { SampleReports.forId(reportId) }
+    val report = remember(reportId) {
+        com.finshield.app.model.AnalysisReportStore.getReport(reportId) ?: SampleReports.forId(reportId)
+    }
 
     ScreenScaffold(title = "Analysis report", subtitle = report.documentName, onBack = onBack) {
         if (report.isSample) {

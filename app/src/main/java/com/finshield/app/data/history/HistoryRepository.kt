@@ -21,6 +21,7 @@ interface HistoryRepository {
 
     /** Demo-only; real implementations leave this as a no-op. */
     suspend fun restoreSamples() {}
+    suspend fun addSummary(summary: AnalysisSummary) {}
 }
 
 /** Built-in sample entries. These are NOT user data and NOT from Firebase. */
@@ -35,6 +36,9 @@ class DemoHistoryRepository : HistoryRepository {
 
     override suspend fun clear() { items.value = emptyList() }
     override suspend fun restoreSamples() { items.value = SAMPLES }
+    override suspend fun addSummary(summary: AnalysisSummary) {
+        items.value = listOf(summary) + items.value
+    }
 
     companion object {
         val SAMPLES = listOf(
