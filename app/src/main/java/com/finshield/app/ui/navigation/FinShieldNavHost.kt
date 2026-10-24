@@ -57,10 +57,20 @@ fun FinShieldNavHost(navController: NavHostController = rememberNavController())
         bottomBar = {
             if (showBottomBar) {
                 FinBottomBar(currentRoute = route, onSelect = { target ->
-                    navController.navigate(target) {
-                        popUpTo(Routes.DASHBOARD) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
+                    if (target == route) return@FinBottomBar
+                    if (target == Routes.DASHBOARD) {
+                        val popped = navController.popBackStack(Routes.DASHBOARD, inclusive = false)
+                        if (!popped) {
+                            navController.navigate(Routes.DASHBOARD) {
+                                launchSingleTop = true
+                            }
+                        }
+                    } else {
+                        navController.navigate(target) {
+                            popUpTo(Routes.DASHBOARD) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
                     }
                 })
             }
@@ -135,9 +145,26 @@ fun FinShieldNavHost(navController: NavHostController = rememberNavController())
                 )
             }
             composable(Routes.ANALYZE) {
-                AnalyzerScreen(onOpenSampleReport = { openReport("sample") })
+                AnalyzerScreen(
+                    onOpenSampleReport = { openReport("sample") },
+                    onBack = {
+                        val popped = navController.popBackStack()
+                        if (!popped) {
+                            navController.navigate(Routes.DASHBOARD) { launchSingleTop = true }
+                        }
+                    }
+                )
             }
-            composable(Routes.COMPARE) { ComparisonScreen() }
+            composable(Routes.COMPARE) {
+                ComparisonScreen(
+                    onBack = {
+                        val popped = navController.popBackStack()
+                        if (!popped) {
+                            navController.navigate(Routes.DASHBOARD) { launchSingleTop = true }
+                        }
+                    }
+                )
+            }
             composable(Routes.PROFILE) {
                 ProfileScreen(
                     session = session,

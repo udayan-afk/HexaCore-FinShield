@@ -1,5 +1,6 @@
 package com.finshield.app.ui.screens.analyzer
 
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -66,11 +67,17 @@ import com.finshield.app.ui.theme.TextPrimary
 import com.finshield.app.ui.theme.TextSecondary
 
 @Composable
-fun AnalyzerScreen(onOpenSampleReport: () -> Unit, vm: AnalyzerViewModel = viewModel()) {
+fun AnalyzerScreen(
+    onOpenSampleReport: () -> Unit,
+    onBack: () -> Unit = {},
+    vm: AnalyzerViewModel = viewModel(),
+) {
     StatusBarIcons(darkIcons = true)
     val context = LocalContext.current
     val ui by vm.state.collectAsState()
     val snackbar = remember { SnackbarHostState() }
+
+    BackHandler { onBack() }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -87,7 +94,7 @@ fun AnalyzerScreen(onOpenSampleReport: () -> Unit, vm: AnalyzerViewModel = viewM
     ScreenScaffold(
         title = "Analyze agreement",
         subtitle = "Secure document review",
-        onBack = null,
+        onBack = onBack,
         snackbarHostState = snackbar,
         handleNavBarInset = false,
     ) {
