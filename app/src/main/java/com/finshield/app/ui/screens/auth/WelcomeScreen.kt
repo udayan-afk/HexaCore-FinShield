@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.sp
 import com.finshield.app.ui.components.DisclaimerText
 import com.finshield.app.ui.components.LinkText
 import com.finshield.app.ui.components.PrimaryButton
+import com.finshield.app.ui.components.SecondaryButton
 import com.finshield.app.ui.components.ShieldLogo
 import com.finshield.app.ui.theme.AppBackground
 import com.finshield.app.ui.theme.EmeraldDark
@@ -48,7 +49,7 @@ import com.finshield.app.ui.theme.TextPrimary
 import com.finshield.app.ui.theme.TextSecondary
 
 @Composable
-fun WelcomeScreen(onGetStarted: () -> Unit, onHaveAccount: () -> Unit) {
+fun WelcomeScreen(onGetStarted: () -> Unit, onHaveAccount: () -> Unit, onDemo: () -> Unit) {
     StatusBarIcons(darkIcons = false)
     Box(Modifier.fillMaxSize().background(AppBackground)) {
         // Navy hero with a diagonal lower edge
@@ -66,7 +67,7 @@ fun WelcomeScreen(onGetStarted: () -> Unit, onHaveAccount: () -> Unit) {
             Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(16.dp))
             Row(
                 Modifier
                     .background(Color.White.copy(alpha = 0.08f), RoundedCornerShape(50))
@@ -78,7 +79,7 @@ fun WelcomeScreen(onGetStarted: () -> Unit, onHaveAccount: () -> Unit) {
                 Icon(Icons.Filled.Lock, null, tint = Color.White.copy(alpha = 0.8f), modifier = Modifier.size(13.dp))
                 Text("Built to protect borrowers", color = Color.White, style = MaterialTheme.typography.labelMedium)
             }
-            Spacer(Modifier.height(36.dp))
+            Spacer(Modifier.height(24.dp))
             Box(Modifier.size(92.dp).background(Color.White, RoundedCornerShape(26.dp)), contentAlignment = Alignment.Center) {
                 ShieldLogo(size = 58.dp)
             }
@@ -103,13 +104,14 @@ fun WelcomeScreen(onGetStarted: () -> Unit, onHaveAccount: () -> Unit) {
             FeatureRow(Icons.Filled.Description, "Clear, clause-by-clause insights", "Know exactly what you are signing")
             Spacer(Modifier.height(14.dp))
             FeatureRow(Icons.Filled.Calculate, "Independent repayment check", "Verify lender calculations in seconds")
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(20.dp))
             PrimaryButton("Get Started", onClick = onGetStarted, trailingIcon = Icons.AutoMirrored.Filled.ArrowForward)
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(10.dp))
+            SecondaryButton("Continue in Demo Mode", onClick = onDemo)
+            Spacer(Modifier.height(2.dp))
             LinkText("I already have an account", onClick = onHaveAccount)
-            Spacer(Modifier.height(4.dp))
             DisclaimerText()
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(10.dp))
         }
     }
 }

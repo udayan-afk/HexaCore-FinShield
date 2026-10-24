@@ -1,6 +1,5 @@
 package com.finshield.app.ui.screens.auth
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -20,6 +19,8 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,30 +32,42 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.finshield.app.ui.components.FinTextField
 import com.finshield.app.ui.components.FinTopBar
 import com.finshield.app.ui.components.InfoBanner
 import com.finshield.app.ui.components.LinkText
 import com.finshield.app.ui.components.PrimaryButton
+import com.finshield.app.ui.components.SecondaryButton
 import com.finshield.app.ui.components.ShieldLogo
-import com.finshield.app.ui.theme.AppBackground
 import com.finshield.app.ui.theme.CardWhite
 import com.finshield.app.ui.theme.TextPrimary
 import com.finshield.app.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
 
-/** Message shown until Firebase Authentication is wired in (Milestone B). Never fakes a sign-in. */
-internal const val AUTH_NOT_CONNECTED = "Sign-in is not connected yet. Firebase Authentication is added in Milestone B."
+private const val DEMO_BANNER_TITLE = "Demo mode (frontend preview)"
+private const val DEMO_BANNER_BODY =
+    "Firebase is not connected yet. Any correctly formatted email and password enters the app in Demo Mode. No account is created and nothing is stored."
 
 @Composable
-fun LoginScreen(onBack: () -> Unit, onCreateAccount: () -> Unit) {
+fun LoginScreen(
+    onBack: () -> Unit,
+    onCreateAccount: () -> Unit,
+    onAuthenticated: () -> Unit,
+    vm: AuthViewModel = viewModel(),
+) {
     StatusBarIcons(darkIcons = true)
+    val ui by vm.state.collectAsState()
     var email by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
     var emailError by rememberSaveable { mutableStateOf<String?>(null) }
     var passwordError by rememberSaveable { mutableStateOf<String?>(null) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(ui.error) {
+        ui.error?.let { snackbar.showSnackbar(it); vm.clearError() }
+    }
 
     Scaffold(
         containerColor = CardWhite,
@@ -87,7 +100,7 @@ fun LoginScreen(onBack: () -> Unit, onCreateAccount: () -> Unit) {
                 color = TextSecondary,
             )
             Spacer(Modifier.height(22.dp))
-            InfoBanner("Setup in progress", "Email sign-in is connected to Firebase in the next milestone.")
+            InfoBanner(DEMO_BANNER_TITLE, DEMO_BANNER_BODY)
             Spacer(Modifier.height(22.dp))
             FinTextField(
                 label = "Email",
@@ -96,6 +109,7 @@ fun LoginScreen(onBack: () -> Unit, onCreateAccount: () -> Unit) {
                 placeholder = "name@email.com",
                 error = emailError,
                 keyboardType = KeyboardType.Email,
+                enabled = !ui.loading,
             )
             Spacer(Modifier.height(18.dp))
             FinTextField(
@@ -105,21 +119,21 @@ fun LoginScreen(onBack: () -> Unit, onCreateAccount: () -> Unit) {
                 placeholder = "Enter your password",
                 error = passwordError,
                 isPassword = true,
+                enabled = !ui.loading,
             )
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 LinkText("Forgot Password?", onClick = {
-                    emailError = AuthValidation.email(email)
-                    scope.launch { snackbar.showSnackbar("Password reset is added together with Firebase Authentication.") }
+                    scope.launch { snackbar.showSnackbar("Password reset needs Firebase Authentication, which is not connected yet.") }
                 })
             }
             Spacer(Modifier.height(10.dp))
-            PrimaryButton("Login", onClick = {
+            PrimaryButton("Login", loading = ui.loading, onClick = {
                 emailError = AuthValidation.email(email)
                 passwordError = AuthValidation.loginPassword(password)
-                if (emailError == null && passwordError == null) {
-                    scope.launch { snackbar.showSnackbar(AUTH_NOT_CONNECTED) }
-                }
+                if (emailError == null && passwordError == null) vm.signIn(email, password, onAuthenticated)
             })
+            Spacer(Modifier.height(12.dp))
+            SecondaryButton("Continue in Demo Mode", enabled = !ui.loading, onClick = { vm.continueInDemoMode(onAuthenticated) })
             Spacer(Modifier.height(18.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                 Text("New to FinShield?", style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp), color = TextSecondary)
@@ -131,8 +145,14 @@ fun LoginScreen(onBack: () -> Unit, onCreateAccount: () -> Unit) {
 }
 
 @Composable
-fun RegisterScreen(onBack: () -> Unit, onHaveAccount: () -> Unit) {
+fun RegisterScreen(
+    onBack: () -> Unit,
+    onHaveAccount: () -> Unit,
+    onAuthenticated: () -> Unit,
+    vm: AuthViewModel = viewModel(),
+) {
     StatusBarIcons(darkIcons = true)
+    val ui by vm.state.collectAsState()
     var name by rememberSaveable { mutableStateOf("") }
     var email by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
@@ -142,7 +162,10 @@ fun RegisterScreen(onBack: () -> Unit, onHaveAccount: () -> Unit) {
     var passwordError by rememberSaveable { mutableStateOf<String?>(null) }
     var confirmError by rememberSaveable { mutableStateOf<String?>(null) }
     val snackbar = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(ui.error) {
+        ui.error?.let { snackbar.showSnackbar(it); vm.clearError() }
+    }
 
     Scaffold(
         containerColor = CardWhite,
@@ -175,23 +198,27 @@ fun RegisterScreen(onBack: () -> Unit, onHaveAccount: () -> Unit) {
                 color = TextSecondary,
             )
             Spacer(Modifier.height(22.dp))
-            FinTextField("Full name", name, { name = it; nameError = null }, "Your name", error = nameError)
+            InfoBanner(DEMO_BANNER_TITLE, DEMO_BANNER_BODY)
+            Spacer(Modifier.height(22.dp))
+            FinTextField("Full name", name, { name = it; nameError = null }, "Your name", error = nameError, enabled = !ui.loading)
             Spacer(Modifier.height(16.dp))
-            FinTextField("Email", email, { email = it; emailError = null }, "name@email.com", error = emailError, keyboardType = KeyboardType.Email)
+            FinTextField("Email", email, { email = it; emailError = null }, "name@email.com", error = emailError, keyboardType = KeyboardType.Email, enabled = !ui.loading)
             Spacer(Modifier.height(16.dp))
-            FinTextField("Password", password, { password = it; passwordError = null }, "At least 8 characters, letters and numbers", error = passwordError, isPassword = true)
+            FinTextField("Password", password, { password = it; passwordError = null }, "At least 8 characters, letters and numbers", error = passwordError, isPassword = true, enabled = !ui.loading)
             Spacer(Modifier.height(16.dp))
-            FinTextField("Confirm password", confirm, { confirm = it; confirmError = null }, "Re-enter your password", error = confirmError, isPassword = true)
+            FinTextField("Confirm password", confirm, { confirm = it; confirmError = null }, "Re-enter your password", error = confirmError, isPassword = true, enabled = !ui.loading)
             Spacer(Modifier.height(24.dp))
-            PrimaryButton("Create Account", onClick = {
+            PrimaryButton("Create Account", loading = ui.loading, onClick = {
                 nameError = AuthValidation.name(name)
                 emailError = AuthValidation.email(email)
                 passwordError = AuthValidation.newPassword(password)
                 confirmError = AuthValidation.confirmPassword(password, confirm)
                 if (listOf(nameError, emailError, passwordError, confirmError).all { it == null }) {
-                    scope.launch { snackbar.showSnackbar(AUTH_NOT_CONNECTED) }
+                    vm.register(name, email, password, onAuthenticated)
                 }
             })
+            Spacer(Modifier.height(12.dp))
+            SecondaryButton("Continue in Demo Mode", enabled = !ui.loading, onClick = { vm.continueInDemoMode(onAuthenticated) })
             Spacer(Modifier.height(18.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                 Text("Already have an account?", style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp), color = TextSecondary)

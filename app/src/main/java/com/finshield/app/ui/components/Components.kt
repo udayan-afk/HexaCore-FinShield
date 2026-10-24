@@ -150,6 +150,8 @@ fun FinTextField(
     isPassword: Boolean = false,
     keyboardType: KeyboardType = KeyboardType.Text,
     enabled: Boolean = true,
+    prefix: String? = null,
+    suffix: String? = null,
 ) {
     var visible by rememberSaveable { mutableStateOf(false) }
     Column(modifier = modifier.fillMaxWidth()) {
@@ -164,6 +166,8 @@ fun FinTextField(
             placeholder = { Text(placeholder, color = TextHint, style = MaterialTheme.typography.bodyMedium) },
             textStyle = MaterialTheme.typography.bodyMedium.copy(color = TextPrimary),
             shape = RoundedCornerShape(16.dp),
+            prefix = prefix?.let { { Text(it, color = TextPrimary, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)) } },
+            suffix = suffix?.let { { Text(it, color = TextSecondary, style = MaterialTheme.typography.bodyMedium) } },
             visualTransformation = if (isPassword && !visible) PasswordVisualTransformation() else VisualTransformation.None,
             keyboardOptions = KeyboardOptions(keyboardType = if (isPassword) KeyboardType.Password else keyboardType),
             trailingIcon = if (isPassword) {
