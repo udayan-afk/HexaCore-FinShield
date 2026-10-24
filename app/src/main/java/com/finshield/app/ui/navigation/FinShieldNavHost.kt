@@ -20,6 +20,7 @@ import com.finshield.app.data.auth.Session
 import com.finshield.app.ui.screens.analyzer.AnalyzerScreen
 import com.finshield.app.ui.screens.analyzer.ReportScreen
 import com.finshield.app.ui.screens.auth.LoginScreen
+import com.finshield.app.ui.screens.auth.OnboardingScreen
 import com.finshield.app.ui.screens.auth.RegisterScreen
 import com.finshield.app.ui.screens.auth.SplashScreen
 import com.finshield.app.ui.screens.auth.WelcomeScreen
@@ -80,11 +81,26 @@ fun FinShieldNavHost(navController: NavHostController = rememberNavController())
             }
             composable(Routes.WELCOME) {
                 WelcomeScreen(
-                    onGetStarted = { navController.navigate(Routes.REGISTER) },
+                    onGetStarted = { navController.navigate(Routes.ONBOARDING) },
                     onHaveAccount = { navController.navigate(Routes.LOGIN) },
                     onDemo = {
                         auth.enterDemoMode()
                         enterApp()
+                    },
+                )
+            }
+            composable(Routes.ONBOARDING) {
+                OnboardingScreen(
+                    onBack = { navController.popBackStack() },
+                    onSkip = {
+                        navController.navigate(Routes.REGISTER) {
+                            popUpTo(Routes.WELCOME)
+                        }
+                    },
+                    onFinish = {
+                        navController.navigate(Routes.REGISTER) {
+                            popUpTo(Routes.WELCOME)
+                        }
                     },
                 )
             }

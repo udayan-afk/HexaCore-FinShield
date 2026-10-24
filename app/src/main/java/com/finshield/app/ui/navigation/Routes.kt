@@ -3,6 +3,7 @@ package com.finshield.app.ui.navigation
 object Routes {
     const val SPLASH = "splash"
     const val WELCOME = "welcome"
+    const val ONBOARDING = "onboarding"
     const val LOGIN = "login"
     const val REGISTER = "register"
 
