@@ -58,7 +58,11 @@ dependencies {
     implementation(platform("com.google.firebase:firebase-bom:33.10.0"))
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
+    implementation("com.google.firebase:firebase-vertexai")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.10.1")
+
+    // PDFBox Android for embedded native PDF text extraction
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 

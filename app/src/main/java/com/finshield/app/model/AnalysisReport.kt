@@ -7,11 +7,49 @@ import com.finshield.app.domain.calculator.LoanInput
 import com.finshield.app.domain.calculator.Money
 import java.util.UUID
 
+enum class TextSourceKind(val label: String) {
+    NATIVE_PDF("Native PDF Text"),
+    OCR("ML Kit OCR"),
+    HYBRID("Native + OCR Merged"),
+    AI_ASSISTED("Gemini AI Assisted"),
+    USER_CORRECTED("User Corrected"),
+}
+
+enum class CompletenessStatus(val label: String) {
+    FOUND("Identified"),
+    NOT_STATED("Not Stated"),
+    AMBIGUOUS("Ambiguous"),
+    UNREADABLE("Unreadable"),
+    NEEDS_VERIFICATION("Verify"),
+}
+
+data class FieldCompletenessItem(
+    val fieldKey: String,
+    val fieldLabel: String,
+    val status: CompletenessStatus,
+    val extractedValue: String? = null,
+    val evidenceSnippet: String? = null,
+    val pageNumber: Int? = null,
+    val notes: String? = null,
+    val sourceKind: TextSourceKind = TextSourceKind.OCR,
+)
+
+data class DocumentCompletenessReport(
+    val totalFieldsChecked: Int = 19,
+    val foundCount: Int,
+    val notStatedCount: Int,
+    val needsVerificationCount: Int,
+    val ambiguousCount: Int,
+    val items: List<FieldCompletenessItem>,
+    val completenessPercentage: Int,
+)
+
 enum class EvidenceKind {
     EXPLICIT,
     HEURISTIC,
     CALCULATED,
     ASSUMED,
+    USER_CORRECTED,
     NOT_FOUND,
 }
 
@@ -90,6 +128,8 @@ data class RiskFinding(
     val evidence: String? = null,
     val pageNumber: Int? = null,
     val clauseReference: String? = null,
+    val whyItMatters: String? = null,
+    val questionToAsk: String? = null,
 )
 
 /** Key borrower obligation category with verified status. */
@@ -106,7 +146,14 @@ data class KeyObligation(
 /** Complete snapshot of the loan terms extracted vs calculated. */
 data class LoanSnapshot(
     val loanType: String = "Personal Loan",
+    val lenderName: String? = null,
+    val borrowerName: String? = null,
+    val agreementDate: String? = null,
+    val referenceNumber: String? = null,
+    val aprPercent: Double? = null,
+    val isFloatingRate: Boolean? = null,
     val sanctionedPrincipal: Double?,
+    val actualDisbursedAmount: Double? = null,
     val annualRatePercent: Double?,
     val interestMethod: InterestMethod?,
     val tenureMonths: Int?,
@@ -153,12 +200,20 @@ data class AnalysisReport(
     val keyObligations: List<KeyObligation>,
     val questionsForLender: List<String>,
     val rawPages: List<PageExtraction> = emptyList(),
+    val isUserReviewed: Boolean = false,
+    val completenessReport: DocumentCompletenessReport? = null,
+    val unrecognizedTerms: List<Finding> = emptyList(),
+    val extractionSourceSummary: String = "ML Kit OCR",
 
     // Backwards-compatible properties
     val principal: Double? = loanSnapshot.sanctionedPrincipal,
     val annualRatePercent: Double? = loanSnapshot.annualRatePercent,
     val tenureMonths: Int? = loanSnapshot.tenureMonths,
     val statedEmi: Double? = loanSnapshot.statedEmi,
+    val lenderName: String? = loanSnapshot.lenderName,
+    val borrowerName: String? = loanSnapshot.borrowerName,
+    val agreementDate: String? = loanSnapshot.agreementDate,
+    val referenceNumber: String? = loanSnapshot.referenceNumber,
     val terms: List<Finding> = emptyList(),
     val feesAndPenalties: List<Finding> = emptyList(),
     val missingInformation: List<String> = emptyList(),

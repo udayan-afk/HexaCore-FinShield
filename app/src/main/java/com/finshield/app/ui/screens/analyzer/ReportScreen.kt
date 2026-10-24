@@ -28,10 +28,12 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.ListAlt
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Info
@@ -129,6 +131,7 @@ fun ReportScreen(
     onBack: () -> Unit,
     onOpenCalculator: () -> Unit,
     onOpenCompleteBreakdown: (String) -> Unit = {},
+    onOpenOcrReview: (String) -> Unit = {},
 ) {
     StatusBarIcons(darkIcons = true)
     val context = LocalContext.current
@@ -143,6 +146,14 @@ fun ReportScreen(
 
     var selectedClauseFinding by remember { mutableStateOf<ClauseViewData?>(null) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showFullTextDialog by remember { mutableStateOf(false) }
+
+    if (showFullTextDialog) {
+        FullDocumentTextViewerDialog(
+            report = report,
+            onDismiss = { showFullTextDialog = false },
+        )
+    }
 
     val prefillAndNavigateCalculator: () -> Unit = {
         val p = report.loanSnapshot.sanctionedPrincipal
@@ -163,6 +174,7 @@ fun ReportScreen(
         // 1. Report Header Section
         ReportHeaderSection(
             report = report,
+            onEdit = { onOpenOcrReview(report.id) },
             onSave = {
                 scope.launch {
                     snackbar.showSnackbar("Report saved to your active session.")
@@ -173,6 +185,50 @@ fun ReportScreen(
             },
             onDelete = { showDeleteConfirm = true },
         )
+
+        // Full Extracted Text & Grounding Card
+        FinCard(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { showFullTextDialog = true },
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.ReceiptLong,
+                        contentDescription = null,
+                        tint = EmeraldDark,
+                        modifier = Modifier.size(22.dp),
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = "Full Extracted Document Text",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Navy,
+                        )
+                        Text(
+                            text = "${report.extractionSourceSummary} • Search & Grounding",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary,
+                        )
+                    }
+                }
+                StatusChip(
+                    text = "${report.completenessReport?.completenessPercentage ?: 0}% Identified",
+                    background = EmeraldTint,
+                    content = EmeraldDark,
+                )
+            }
+        }
 
         // 2. Compact Loan Snapshot
         CompactLoanSnapshotSection(report)
@@ -211,6 +267,7 @@ fun ReportScreen(
         // Supported Action Buttons
         ReportFooterActions(
             onOpenCompleteBreakdown = { onOpenCompleteBreakdown(report.id) },
+            onOpenOcrReview = { onOpenOcrReview(report.id) },
             onVerifyRepayment = prefillAndNavigateCalculator,
             onShare = { shareReportSummary(context, report) },
         )
@@ -256,6 +313,7 @@ fun ReportScreen(
 @Composable
 private fun ReportHeaderSection(
     report: AnalysisReport,
+    onEdit: () -> Unit,
     onSave: () -> Unit,
     onShare: () -> Unit,
     onDelete: () -> Unit,
@@ -281,6 +339,9 @@ private fun ReportHeaderSection(
                     )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    IconButton(onClick = onEdit, modifier = Modifier.size(38.dp)) {
+                        Icon(Icons.Filled.Edit, contentDescription = "Review Extracted Terms", tint = EmeraldDark)
+                    }
                     IconButton(onClick = onShare, modifier = Modifier.size(38.dp)) {
                         Icon(Icons.Filled.Share, contentDescription = "Share Report", tint = EmeraldDark)
                     }
@@ -359,7 +420,48 @@ private fun CompactLoanSnapshotSection(report: AnalysisReport) {
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     color = Navy,
                 )
-                StatusChip(s.loanType, InfoBlueTint, InfoBlue)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (s.aprPercent != null) {
+                        StatusChip("APR: ${s.aprPercent}%", AmberTint, AmberDark)
+                    }
+                    StatusChip(s.loanType, InfoBlueTint, InfoBlue)
+                }
+            }
+
+            // Agreement & Parties Metadata Header if present
+            if (!s.lenderName.isNullOrBlank() || !s.borrowerName.isNullOrBlank() || !s.referenceNumber.isNullOrBlank() || !s.agreementDate.isNullOrBlank()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(SegmentTrack, RoundedCornerShape(10.dp))
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    if (!s.lenderName.isNullOrBlank()) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Lender / Bank:", style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp), color = TextHint)
+                            Text(s.lenderName, style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Bold), color = Navy)
+                        }
+                    }
+                    if (!s.borrowerName.isNullOrBlank()) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Borrower:", style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp), color = TextHint)
+                            Text(s.borrowerName, style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold), color = TextPrimary)
+                        }
+                    }
+                    if (!s.referenceNumber.isNullOrBlank()) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Agreement / Sanction Ref:", style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp), color = TextHint)
+                            Text(s.referenceNumber, style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Medium), color = TextSecondary)
+                        }
+                    }
+                    if (!s.agreementDate.isNullOrBlank()) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Agreement Date:", style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp), color = TextHint)
+                            Text(s.agreementDate, style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp), color = TextSecondary)
+                        }
+                    }
+                }
             }
 
             HorizontalDivider(color = DividerColor)
@@ -372,6 +474,9 @@ private fun CompactLoanSnapshotSection(report: AnalysisReport) {
                     sub = "Base Approved Amount",
                     color = EmeraldDark,
                     bg = EmeraldTint,
+                    provenance = if (s.sanctionedPrincipal != null) "Extracted from document" else "Needs verification",
+                    provenanceColor = if (s.sanctionedPrincipal != null) EmeraldDark else AmberDark,
+                    provenanceBg = if (s.sanctionedPrincipal != null) CardWhite else AmberTint,
                     modifier = Modifier.weight(1f),
                 )
                 SnapshotTile(
@@ -380,6 +485,11 @@ private fun CompactLoanSnapshotSection(report: AnalysisReport) {
                     sub = s.interestMethod?.label ?: "Reducing Balance",
                     color = Navy,
                     bg = SegmentTrack,
+                    provenance = if (s.annualRatePercent != null) {
+                        if (s.isFloatingRate == true) "Floating (Extracted)" else "Extracted from document"
+                    } else "Not found in document",
+                    provenanceColor = if (s.annualRatePercent != null) Navy else Rose,
+                    provenanceBg = if (s.annualRatePercent != null) CardWhite else RoseTint,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -392,6 +502,9 @@ private fun CompactLoanSnapshotSection(report: AnalysisReport) {
                     sub = s.tenureYears?.let { String.format(Locale.US, "%.1f Years", it) } ?: "Unspecified",
                     color = Navy,
                     bg = SegmentTrack,
+                    provenance = if (s.tenureMonths != null) "Extracted from document" else "Not found in document",
+                    provenanceColor = if (s.tenureMonths != null) Navy else Rose,
+                    provenanceBg = if (s.tenureMonths != null) CardWhite else RoseTint,
                     modifier = Modifier.weight(1f),
                 )
                 SnapshotTile(
@@ -402,6 +515,11 @@ private fun CompactLoanSnapshotSection(report: AnalysisReport) {
                     sub = if (s.statedEmi != null) "Stated in Agreement" else "FinShield Calculated",
                     color = if (s.emiDifference != null && abs(s.emiDifference) >= 50) AmberDark else EmeraldDark,
                     bg = if (s.emiDifference != null && abs(s.emiDifference) >= 50) AmberTint else EmeraldTint,
+                    provenance = if (s.statedEmi != null) "Extracted from document"
+                    else if (s.calculatedEmi != null) "Independently calculated"
+                    else "Needs verification",
+                    provenanceColor = if (s.statedEmi != null) EmeraldDark else if (s.calculatedEmi != null) InfoBlue else AmberDark,
+                    provenanceBg = CardWhite,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -422,7 +540,7 @@ private fun CompactLoanSnapshotSection(report: AnalysisReport) {
                         color = TextSecondary,
                     )
                     Text(
-                        "${s.tenureMonths ?: 36} monthly installments",
+                        "${s.tenureMonths ?: 36} monthly installments • ${if (s.statedTotalRepayment != null) "Extracted from document" else "Independently calculated"}",
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                         color = TextHint,
                     )
@@ -446,6 +564,9 @@ private fun SnapshotTile(
     sub: String,
     color: Color,
     bg: Color,
+    provenance: String? = null,
+    provenanceColor: Color = EmeraldDark,
+    provenanceBg: Color = CardWhite,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -457,6 +578,20 @@ private fun SnapshotTile(
         Text(label, style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp), color = TextSecondary)
         Text(value, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = color)
         Text(sub, style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp), color = TextSecondary)
+        if (!provenance.isNullOrBlank()) {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(provenanceBg)
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            ) {
+                Text(
+                    provenance,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                    color = provenanceColor,
+                )
+            }
+        }
     }
 }
 
@@ -716,6 +851,8 @@ private fun SwipeableRiskReviewSection(
                                     evidence = finding.evidence,
                                     pageNumber = finding.pageNumber,
                                     clauseReference = finding.clauseReference,
+                                    whyItMatters = finding.whyItMatters,
+                                    questionToAsk = finding.questionToAsk,
                                 ),
                             )
                         },
@@ -798,6 +935,48 @@ private fun SwipeableRiskCard(
             color = TextSecondary,
             lineHeight = 18.sp,
         )
+
+        if (!finding.whyItMatters.isNullOrBlank()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(InfoBlueTint.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    "Why this matters to the borrower:",
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
+                    color = InfoBlue,
+                )
+                Text(
+                    finding.whyItMatters,
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                    color = TextPrimary,
+                )
+            }
+        }
+
+        if (!finding.questionToAsk.isNullOrBlank()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(SegmentTrack, RoundedCornerShape(8.dp))
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    "Question to ask the lender:",
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
+                    color = Navy,
+                )
+                Text(
+                    finding.questionToAsk,
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, fontWeight = FontWeight.Medium),
+                    color = TextPrimary,
+                )
+            }
+        }
 
         // Estimated Rupee Impact (only when calculable)
         if (!finding.financialImpactDescription.isNullOrBlank()) {
@@ -1318,10 +1497,17 @@ private fun CollapsibleEvidenceSection(
 @Composable
 private fun ReportFooterActions(
     onOpenCompleteBreakdown: () -> Unit,
+    onOpenOcrReview: () -> Unit,
     onVerifyRepayment: () -> Unit,
     onShare: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        SecondaryButton(
+            text = "Review & Edit Extracted Fields",
+            onClick = onOpenOcrReview,
+            leadingIcon = Icons.Filled.Edit,
+        )
+
         SecondaryButton(
             text = "Verify Repayment in Calculator",
             onClick = onVerifyRepayment,

@@ -42,6 +42,8 @@ data class ClauseViewData(
     val evidence: String?,
     val pageNumber: Int? = null,
     val clauseReference: String? = null,
+    val whyItMatters: String? = null,
+    val questionToAsk: String? = null,
 )
 
 @Composable
@@ -111,6 +113,40 @@ fun ClauseDetailDialog(
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextSecondary,
                 )
+
+                if (!clauseData.whyItMatters.isNullOrBlank()) {
+                    Text(
+                        "Why this matters to the borrower:",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = TextHint,
+                    )
+                    Text(
+                        clauseData.whyItMatters,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextPrimary,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(InfoBlueTint.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                            .padding(10.dp),
+                    )
+                }
+
+                if (!clauseData.questionToAsk.isNullOrBlank()) {
+                    Text(
+                        "Question to ask the lender:",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = TextHint,
+                    )
+                    Text(
+                        clauseData.questionToAsk,
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                        color = Navy,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(SegmentTrack, RoundedCornerShape(8.dp))
+                            .padding(10.dp),
+                    )
+                }
 
                 PrimaryButton(text = "Close", onClick = onDismiss)
             }

@@ -19,20 +19,18 @@ import java.util.UUID
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
-data class ExtractedMatch<T>(
-    val value: T,
-    val snippet: String,
-    val pageNumber: Int,
-    val clause: String? = null,
-    val kind: EvidenceKind = EvidenceKind.EXPLICIT,
-)
-
+/**
+ * Intelligent loan agreement analyzer.
+ * Extracts loan terms via [StructuredLoanExtractor], validates values, computes independent
+ * reducing-balance amortisations, checks upfront deductions, and generates evidence-backed risk reviews.
+ */
 object LoanAgreementAnalyzer {
 
     fun analyze(
         documentName: String,
         extraction: DocumentExtractionResult,
         reportId: String = UUID.randomUUID().toString(),
+        geminiOutput: GeminiStructuredOutput? = null,
     ): AnalysisReport {
         val pages = if (extraction.pages.isNotEmpty()) extraction.pages else listOf(
             PageExtraction(1, extraction.fullText, extraction.fullText.length, isBlank = extraction.fullText.isBlank()),
@@ -46,13 +44,36 @@ object LoanAgreementAnalyzer {
         val itemizedCharges = mutableListOf<FinancialCharge>()
         val riskFindings = mutableListOf<RiskFinding>()
 
-        // 1. Loan Type
-        val loanTypeMatch = extractLoanType(pages, text)
-        val loanType = loanTypeMatch.value
+        // 1. Structured extraction
+        val extracted = StructuredLoanExtractor.extract(pages, text)
 
-        // 2. Sanctioned Principal Amount
-        val principalMatch = extractPrincipal(pages, text)
+        val principalMatch = extracted.sanctionedPrincipal
         val principal = principalMatch?.value
+
+        val rateMatch = extracted.annualRatePercent
+        val annualRate = rateMatch?.value
+
+        val tenureMatch = extracted.tenureMonths
+        val tenureMonths = tenureMatch?.value
+
+        val methodMatch = extracted.interestMethod
+        val interestMethod = methodMatch?.value
+
+        val statedEmiMatch = extracted.statedEmi
+        val statedEmi = statedEmiMatch?.value
+
+        val statedTotalMatch = extracted.statedTotalRepayment
+        val statedTotalRepayment = statedTotalMatch?.value ?: (if (statedEmi != null && tenureMonths != null) statedEmi * tenureMonths else null)
+
+        val procFeeMatch = extracted.processingFee
+        val stampDutyMatch = extracted.stampDuty
+        val docChargesMatch = extracted.documentationCharges
+        val insuranceMatch = extracted.insurancePremium
+        val prepaymentMatch = extracted.prepaymentDetails
+        val lateChargeMatch = extracted.latePaymentDetails
+        val revisionClauses = extracted.revisionClauses
+
+        // 2. Terms assembly
         if (principalMatch != null) {
             terms.add(
                 Finding(
@@ -80,25 +101,16 @@ object LoanAgreementAnalyzer {
                 ),
             )
         } else {
-            terms.add(
-                Finding(
-                    label = "Sanctioned amount",
-                    value = null,
-                    evidence = null,
-                    kind = EvidenceKind.NOT_FOUND,
-                ),
-            )
+            terms.add(Finding("Sanctioned amount", null, null, EvidenceKind.NOT_FOUND))
             missing.add("Sanctioned loan amount could not be detected with confidence.")
         }
 
-        // 3. Interest Rate
-        val rateMatch = extractInterestRate(pages, text)
-        val annualRate = rateMatch?.value
         if (rateMatch != null) {
+            val suffix = if (extracted.isRateMonthly) "% p.a. (converted from monthly rate)" else "% per annum"
             terms.add(
                 Finding(
                     label = "Interest rate",
-                    value = "${rateMatch.value}% per annum",
+                    value = "${rateMatch.value}$suffix",
                     evidence = rateMatch.snippet,
                     kind = rateMatch.kind,
                     pageNumber = rateMatch.pageNumber,
@@ -106,51 +118,27 @@ object LoanAgreementAnalyzer {
                 ),
             )
         } else {
-            terms.add(
-                Finding(
-                    label = "Interest rate",
-                    value = null,
-                    evidence = null,
-                    kind = EvidenceKind.NOT_FOUND,
-                ),
-            )
-            missing.add("Annual interest rate (ROI) was not explicitly identified.")
+            terms.add(Finding("Interest rate", null, null, EvidenceKind.NOT_FOUND))
+            missing.add("Annual interest rate (ROI) was not explicitly identified in document.")
         }
 
-        // 4. Interest Calculation Method
-        val methodMatch = extractInterestMethod(pages, text)
-        val interestMethod = methodMatch?.value
-
-        // 5. Loan Tenure
-        val tenureMatch = extractTenure(pages, text)
-        val tenureMonths = tenureMatch?.value
         if (tenureMonths != null) {
             val yearsStr = if (tenureMonths >= 12 && tenureMonths % 12 == 0) " (${tenureMonths / 12} years)" else ""
             terms.add(
                 Finding(
                     label = "Tenure",
                     value = "$tenureMonths months$yearsStr",
-                    evidence = tenureMatch.snippet,
-                    kind = tenureMatch.kind,
-                    pageNumber = tenureMatch.pageNumber,
-                    clauseReference = tenureMatch.clause,
+                    evidence = tenureMatch?.snippet,
+                    kind = tenureMatch?.kind ?: EvidenceKind.EXPLICIT,
+                    pageNumber = tenureMatch?.pageNumber,
+                    clauseReference = tenureMatch?.clause,
                 ),
             )
         } else {
-            terms.add(
-                Finding(
-                    label = "Tenure",
-                    value = null,
-                    evidence = null,
-                    kind = EvidenceKind.NOT_FOUND,
-                ),
-            )
+            terms.add(Finding("Tenure", null, null, EvidenceKind.NOT_FOUND))
             missing.add("Loan tenure or repayment period was not found.")
         }
 
-        // 6. Stated EMI
-        val statedEmiMatch = extractStatedEmi(pages, text)
-        val statedEmi = statedEmiMatch?.value
         if (statedEmiMatch != null) {
             terms.add(
                 Finding(
@@ -164,12 +152,7 @@ object LoanAgreementAnalyzer {
             )
         }
 
-        // 7. Stated Total Repayment
-        val statedTotalMatch = extractStatedTotalRepayment(pages, text)
-        val statedTotalRepayment = statedTotalMatch?.value ?: (if (statedEmi != null && tenureMonths != null) statedEmi * tenureMonths else null)
-
-        // 8. Processing Fee & Taxes
-        val procFeeMatch = extractProcessingFeeDetails(pages, text, principal)
+        // 3. Processing Fee and Upfront Charges
         var procFeeAmount: Double? = null
         var procFeeGst: Double? = null
         if (procFeeMatch != null) {
@@ -220,7 +203,7 @@ object LoanAgreementAnalyzer {
                         calculatedAmount = procFeeMatch.gstAmount,
                         totalWithGst = procFeeMatch.gstAmount,
                         isUpfrontDeduction = procFeeMatch.isUpfront,
-                        assumptions = if (procFeeMatch.isGstAssumed) "Assumed standard 18% statutory GST (configurable)" else "Explicitly stated in agreement",
+                        assumptions = if (procFeeMatch.isGstAssumed) "Assumed standard 18% statutory GST" else "Explicitly stated in agreement",
                         evidence = procFeeMatch.snippet,
                         pageNumber = procFeeMatch.pageNumber,
                         clauseReference = procFeeMatch.clause,
@@ -229,19 +212,10 @@ object LoanAgreementAnalyzer {
                 )
             }
         } else {
-            fees.add(
-                Finding(
-                    label = "Processing fee",
-                    value = "Not disclosed in scanned pages",
-                    evidence = null,
-                    kind = EvidenceKind.NOT_FOUND,
-                ),
-            )
+            fees.add(Finding("Processing fee", "Not disclosed in scanned pages", null, EvidenceKind.NOT_FOUND))
             missing.add("Processing fee details were not located in the document.")
         }
 
-        // 9. Stamp Duty
-        val stampDutyMatch = extractStampDuty(pages, text)
         var stampDutyAmount: Double? = null
         if (stampDutyMatch != null) {
             stampDutyAmount = stampDutyMatch.value
@@ -263,8 +237,6 @@ object LoanAgreementAnalyzer {
             )
         }
 
-        // 10. Documentation / Admin Charges
-        val docChargesMatch = extractDocumentationCharges(pages, text)
         var docChargesAmount: Double? = null
         if (docChargesMatch != null) {
             docChargesAmount = docChargesMatch.value
@@ -285,8 +257,6 @@ object LoanAgreementAnalyzer {
             )
         }
 
-        // 11. Insurance / Add-ons
-        val insuranceMatch = extractInsurance(pages, text)
         var insuranceAmount: Double? = null
         if (insuranceMatch != null) {
             insuranceAmount = insuranceMatch.value
@@ -307,8 +277,6 @@ object LoanAgreementAnalyzer {
             )
         }
 
-        // 12. Prepayment / Foreclosure
-        val prepaymentMatch = extractPrepaymentDetails(pages, text)
         if (prepaymentMatch != null) {
             fees.add(
                 Finding(
@@ -336,19 +304,10 @@ object LoanAgreementAnalyzer {
                 ),
             )
         } else {
-            fees.add(
-                Finding(
-                    label = "Prepayment / foreclosure",
-                    value = "Terms not identified",
-                    evidence = null,
-                    kind = EvidenceKind.NOT_FOUND,
-                ),
-            )
+            fees.add(Finding("Prepayment / foreclosure", "Terms not identified", null, EvidenceKind.NOT_FOUND))
             missing.add("Foreclosure and partial prepayment terms were not identified in the scanned pages.")
         }
 
-        // 13. Late Payment / Overdue Charges
-        val lateChargeMatch = extractLatePaymentDetails(pages, text)
         if (lateChargeMatch != null) {
             fees.add(
                 Finding(
@@ -368,7 +327,7 @@ object LoanAgreementAnalyzer {
                     fixedAmount = lateChargeMatch.fixedFee,
                     formulaDescription = lateChargeMatch.formulaDescription,
                     calculationBase = "Overdue Installment Amount",
-                    assumptions = "Charge applies only on overdue amounts for the duration of delay.",
+                    assumptions = "Charge applies on overdue amounts for the duration of delay.",
                     pageNumber = lateChargeMatch.pageNumber,
                     clauseReference = lateChargeMatch.clause,
                     evidence = lateChargeMatch.snippet,
@@ -376,18 +335,11 @@ object LoanAgreementAnalyzer {
                 ),
             )
         } else {
-            fees.add(
-                Finding(
-                    label = "Late-payment charge",
-                    value = "Default penalty not stated",
-                    evidence = null,
-                    kind = EvidenceKind.NOT_FOUND,
-                ),
-            )
+            fees.add(Finding("Late-payment charge", "Default penalty not stated", null, EvidenceKind.NOT_FOUND))
             missing.add("Overdue interest / late payment penalty rates were not specified.")
         }
 
-        // 14. Calculations & Amortisation
+        // 4. Calculations & Amortisation
         var calculatedEmi: Double? = null
         var calculatedTotalRepayment: Double? = null
         var calculatedTotalInterest: Double? = null
@@ -425,13 +377,15 @@ object LoanAgreementAnalyzer {
                     riskFindings.add(
                         RiskFinding(
                             title = "EMI Discrepancy (${Money.inr(abs(diff))}/mo $direction)",
-                            explanation = "The agreement states an EMI of ${Money.inr(statedEmi)}, while standard ${calcMethod.label.lowercase()} amortisation yields ${Money.inr(calc.installment)}. Over $tenureMonths months, this represents a variance of ${Money.inr(abs(totalEmiImpact))}. Potential causes include fee capitalisation, broken-period interest, or flat-rate calculation.",
+                            explanation = "The agreement states an EMI of ${Money.inr(statedEmi)}, while standard ${calcMethod.label.lowercase()} amortisation yields ${Money.inr(calc.installment)}. Over $tenureMonths months, this represents a cumulative variance of ${Money.inr(abs(totalEmiImpact))}. Potential causes include fee capitalisation, broken-period interest, or flat-rate calculation.",
                             severity = if (abs(diff) >= 200.0) Severity.HIGH else Severity.MEDIUM,
                             financialImpact = abs(totalEmiImpact),
                             financialImpactDescription = "${Money.inr(abs(totalEmiImpact))} total variance over tenure",
                             evidence = statedEmiMatch?.snippet,
                             pageNumber = statedEmiMatch?.pageNumber,
                             clauseReference = statedEmiMatch?.clause,
+                            whyItMatters = "An unexplained higher EMI means you pay significantly more in total interest than the quoted annual percentage rate suggests.",
+                            questionToAsk = "Why does the stated EMI of ${Money.inr(statedEmi)} exceed the standard reducing-balance amortisation of ${Money.inr(calc.installment)}? Are insurance premiums or broken-period interest added?",
                         ),
                     )
                 }
@@ -456,8 +410,29 @@ object LoanAgreementAnalyzer {
             calculatedTotalRepayment + (totalUpfrontDeductions ?: 0.0)
         } else null
 
-        // High Foreclosure Fee Risk Check
-        if (prepaymentMatch != null && prepaymentMatch.percentage != null && prepaymentMatch.percentage >= 3.0 && principal != null) {
+        // 5. Evidence-Backed Risk Findings (Phase 6)
+        // High Upfront Deductions check
+        if (totalUpfrontDeductions != null && principal != null && principal > 0) {
+            val deductionPct = (totalUpfrontDeductions / principal) * 100.0
+            if (deductionPct >= 3.0) {
+                riskFindings.add(
+                    RiskFinding(
+                        title = "Significant Upfront Deductions (${deductionPct.roundToInt()}% of Principal)",
+                        explanation = "A total of ${Money.inr(totalUpfrontDeductions)} (${deductionPct.roundToInt()}% of your sanctioned loan) will be deducted upfront from your disbursal. Your estimated take-home amount is only ${Money.inr(estimatedNetDisbursal ?: (principal - totalUpfrontDeductions))}.",
+                        severity = if (deductionPct >= 5.0) Severity.HIGH else Severity.MEDIUM,
+                        financialImpact = totalUpfrontDeductions,
+                        financialImpactDescription = "${Money.inr(totalUpfrontDeductions)} deducted before payout",
+                        evidence = procFeeMatch?.snippet ?: "Itemized upfront charges",
+                        pageNumber = procFeeMatch?.pageNumber,
+                        whyItMatters = "Upfront deductions reduce the actual cash you receive, while you still pay interest on the full sanctioned principal amount.",
+                        questionToAsk = "Can the processing fee and insurance premiums be reduced or paid separately rather than being deducted directly from my disbursal?",
+                    ),
+                )
+            }
+        }
+
+        // High Prepayment Penalty Risk Check
+        if (prepaymentMatch?.percentage != null && prepaymentMatch.percentage >= 3.0 && principal != null) {
             val estimatedBalanceAt12 = LoanCalculator.outstandingBalanceAfter(
                 principal = principal,
                 annualRatePercent = annualRate ?: 12.0,
@@ -468,29 +443,47 @@ object LoanAgreementAnalyzer {
             riskFindings.add(
                 RiskFinding(
                     title = "High Foreclosure Charge (${prepaymentMatch.percentage}% + GST)",
-                    explanation = "Foreclosing the loan carries a ${prepaymentMatch.percentage}% penalty on outstanding principal plus GST. For example, foreclosing at month 12 on an estimated remaining balance of ${Money.inr(estimatedBalanceAt12)} would cost approximately ${Money.inr(penaltyEst.totalCost)} in penalty and taxes.",
+                    explanation = "Foreclosing or prepaying the loan carries a ${prepaymentMatch.percentage}% penalty on outstanding principal plus GST. For example, prepaying at month 12 on an estimated remaining balance of ${Money.inr(estimatedBalanceAt12)} costs ~${Money.inr(penaltyEst.totalCost)} in penalty fees.",
                     severity = Severity.MEDIUM,
                     financialImpact = penaltyEst.totalCost,
                     financialImpactDescription = "~${Money.inr(penaltyEst.totalCost)} penalty at month 12",
                     evidence = prepaymentMatch.snippet,
                     pageNumber = prepaymentMatch.pageNumber,
                     clauseReference = prepaymentMatch.clause,
+                    whyItMatters = "Foreclosure penalties penalize you for repaying your debt early and hinder refinancing to cheaper lenders.",
+                    questionToAsk = "Is the prepayment penalty waived if the loan is foreclosed using the borrower's own verified funds in accordance with RBI guidelines?",
                 ),
             )
         }
 
-        // Revision clauses
-        val revisionClauses = findRevisionClauses(pages, text)
+        // Discretionary Revision Clauses
         if (revisionClauses.isNotEmpty()) {
-            review.add("Lender interest/charge variation clause detected (${revisionClauses.joinToString { it.snippet }})")
+            review.add("Lender interest/charge variation clause detected: ${revisionClauses.first().snippet}")
             riskFindings.add(
                 RiskFinding(
                     title = "Lender Discretionary Rate/Fee Variation Clause",
-                    explanation = "The agreement contains terms permitting the lender to revise interest rate spreads or charges unilaterally upon notice without requiring borrower re-consent.",
+                    explanation = "The agreement contains terms permitting the lender to revise interest rate spreads or charges unilaterally upon notice without requiring explicit borrower re-consent.",
                     severity = Severity.MEDIUM,
                     evidence = revisionClauses.first().snippet,
                     pageNumber = revisionClauses.first().pageNumber,
-                    clauseReference = "Revision Clause",
+                    clauseReference = "Variation Clause",
+                    whyItMatters = "Unilateral reset clauses allow the lender to raise your interest spread or fees even if benchmark market rates have not increased.",
+                    questionToAsk = "What transparent external benchmark governs interest rate adjustments, and how much advance notice is provided before rate revisions take effect?",
+                ),
+            )
+        }
+
+        // Missing APR Check
+        if (extracted.aprPercent == null && annualRate != null) {
+            riskFindings.add(
+                RiskFinding(
+                    title = "Missing Annual Percentage Rate (APR) Disclosure",
+                    explanation = "The document states an interest rate of $annualRate% but does not explicitly disclose the Annual Percentage Rate (APR) including all upfront and recurring fees as required by RBI Key Fact Statement (KFS) norms.",
+                    severity = Severity.LOW,
+                    evidence = rateMatch?.snippet,
+                    pageNumber = rateMatch?.pageNumber,
+                    whyItMatters = "Without APR, the true annualized cost of your loan after factoring in processing fees, documentation charges, and mandatory insurance remains concealed.",
+                    questionToAsk = "Can the lender provide the official RBI-mandated Key Fact Statement (KFS) detailing the comprehensive Annual Percentage Rate (APR)?",
                 ),
             )
         }
@@ -505,6 +498,8 @@ object LoanAgreementAnalyzer {
                     severity = Severity.HIGH,
                     evidence = rateMatch?.snippet,
                     pageNumber = rateMatch?.pageNumber,
+                    whyItMatters = "A flat rate of $annualRate% on a 3-year loan is equivalent to approximately ${((annualRate * 1.85) * 10).roundToInt() / 10.0}% reducing-balance rate.",
+                    questionToAsk = "Please confirm in writing whether interest is computed strictly on a diminishing (reducing) monthly balance basis.",
                 ),
             )
         }
@@ -515,10 +510,60 @@ object LoanAgreementAnalyzer {
             review.add("The scanned document contained very little text. Ensure the physical agreement or PDF is fully readable and clear.")
         }
 
-        // Key Obligations
-        val keyObligations = buildKeyObligations(pages, text, prepaymentMatch, lateChargeMatch)
+        // Contradictory documentation fee check (e.g. Clause 4.3 vs Schedule B)
+        val docMatches = pages.flatMap { page ->
+            val pattern = Regex(
+                """(?:documentation|admin(?:istrative)?\s+charges?|verification\s+charges?)\D{0,35}(?:rs\.?|inr|₹)\s*([0-9,]+(?:\.[0-9]{2})?)""",
+                RegexOption.IGNORE_CASE,
+            )
+            pattern.findAll(page.text).mapNotNull { m ->
+                val v = StructuredLoanExtractor.parseIndianNumber(m.groupValues[1])
+                if (v != null && v in 50.0..50000.0) Triple(v, m.value.trim(), page.pageNumber) else null
+            }.toList()
+        }
+        val distinctDocAmounts = docMatches.map { it.first }.distinct()
+        if (distinctDocAmounts.size > 1) {
+            val first = docMatches.first()
+            val second = docMatches.first { it.first != first.first }
+            val diff = abs(first.first - second.first)
+            riskFindings.add(
+                RiskFinding(
+                    title = "Contradictory Documentation Fee",
+                    explanation = "The agreement contains conflicting documentation fee amounts: ${Money.inr(first.first)} (Page ${first.third}) vs ${Money.inr(second.first)} (Page ${second.third}). This inconsistency is flagged and not silently reconciled. Obtain written clarification from the lender.",
+                    severity = Severity.HIGH,
+                    financialImpact = diff,
+                    financialImpactDescription = "${Money.inr(diff)} discrepancy between conflicting clauses",
+                    evidence = "${first.second} vs ${second.second}",
+                    pageNumber = first.third,
+                    clauseReference = "Documentation Fee Conflict",
+                    whyItMatters = "Conflicting fee clauses may lead to higher upfront deductions at disbursal.",
+                    questionToAsk = "Which documentation fee amount is legally binding: ${Money.inr(first.first)} or ${Money.inr(second.first)}?",
+                ),
+            )
+        }
 
-        // Questions to ask lender
+        // Stated vs Calculated Net Disbursal check
+        val statedDisbursed = extracted.actualDisbursedAmount?.value ?: geminiOutput?.actualDisbursedAmount?.value
+        if (statedDisbursed != null && estimatedNetDisbursal != null) {
+            val disbursalDiff = abs(statedDisbursed - estimatedNetDisbursal)
+            if (disbursalDiff >= 200.0) {
+                riskFindings.add(
+                    RiskFinding(
+                        title = "Stated Net Disbursal Mismatch (${Money.inr(disbursalDiff)})",
+                        explanation = "The agreement states a net disbursal of ${Money.inr(statedDisbursed)}, but subtracting identified upfront deductions (${Money.inr(totalUpfrontDeductions ?: 0.0)}) from the sanctioned principal yields ${Money.inr(estimatedNetDisbursal)}. There may be undisclosed deductions or fee capitalisation.",
+                        severity = Severity.HIGH,
+                        financialImpact = disbursalDiff,
+                        financialImpactDescription = "${Money.inr(disbursalDiff)} unexplained difference",
+                        evidence = extracted.actualDisbursedAmount?.snippet ?: "Stated Disbursal vs Deductions",
+                        pageNumber = extracted.actualDisbursedAmount?.pageNumber,
+                        whyItMatters = "A lower net disbursal means you receive less money than expected while still paying interest on the full sanctioned principal.",
+                        questionToAsk = "Can you provide an itemized disbursal statement accounting for the ${Money.inr(disbursalDiff)} variance between stated disbursal and deductions?",
+                    ),
+                )
+            }
+        }
+
+        val keyObligations = buildKeyObligations(pages, prepaymentMatch, lateChargeMatch)
         val questionsForLender = generateQuestionsForLender(
             emiDifference = emiDifference,
             statedEmi = statedEmi,
@@ -530,34 +575,49 @@ object LoanAgreementAnalyzer {
             revisionClauses = revisionClauses,
         )
 
+        val completeness = CompletenessChecker.audit(pages, extracted, geminiOutput)
+        val sourceSummary = when {
+            geminiOutput != null -> "Gemini AI + ${extraction.primarySource.label}"
+            extraction.primarySource == com.finshield.app.model.TextSourceKind.NATIVE_PDF -> "Native PDF Text Extraction"
+            extraction.primarySource == com.finshield.app.model.TextSourceKind.HYBRID -> "Hybrid (Native Text + OCR)"
+            else -> "ML Kit OCR v2 (On-device)"
+        }
+
         val snapshot = LoanSnapshot(
-            loanType = loanType,
-            sanctionedPrincipal = principal,
-            annualRatePercent = annualRate,
+            loanType = extracted.loanType.value,
+            lenderName = extracted.lenderName?.value ?: geminiOutput?.lenderName?.value,
+            borrowerName = extracted.borrowerName?.value ?: geminiOutput?.borrowerName?.value,
+            agreementDate = extracted.agreementDate?.value ?: geminiOutput?.agreementDate?.value,
+            referenceNumber = extracted.referenceNumber?.value ?: geminiOutput?.referenceNumber?.value,
+            aprPercent = extracted.aprPercent?.value ?: geminiOutput?.aprPercent?.value,
+            isFloatingRate = extracted.isFloatingRate ?: geminiOutput?.isFloatingRate?.value,
+            sanctionedPrincipal = principal ?: geminiOutput?.sanctionedPrincipal?.value,
+            actualDisbursedAmount = extracted.actualDisbursedAmount?.value ?: geminiOutput?.actualDisbursedAmount?.value,
+            annualRatePercent = annualRate ?: geminiOutput?.annualRatePercent?.value,
             interestMethod = interestMethod,
-            tenureMonths = tenureMonths,
-            tenureYears = tenureMonths?.let { it.toDouble() / 12.0 },
-            statedEmi = statedEmi,
+            tenureMonths = tenureMonths ?: geminiOutput?.tenureMonths?.value,
+            tenureYears = (tenureMonths ?: geminiOutput?.tenureMonths?.value)?.let { it.toDouble() / 12.0 },
+            statedEmi = statedEmi ?: geminiOutput?.statedEmi?.value,
             calculatedEmi = calculatedEmi,
             emiDifference = emiDifference,
-            statedTotalRepayment = statedTotalRepayment,
+            statedTotalRepayment = statedTotalRepayment ?: geminiOutput?.totalRepayment?.value,
             calculatedTotalRepayment = calculatedTotalRepayment,
             totalRepaymentDifference = totalDifference,
         )
 
         val breakdown = FinancialBreakdown(
-            sanctionedPrincipal = principal,
-            processingFeeAmount = procFeeAmount,
-            processingFeeGst = procFeeGst,
-            stampDuty = stampDutyAmount,
-            documentationCharges = docChargesAmount,
-            insuranceCharges = insuranceAmount,
+            sanctionedPrincipal = principal ?: geminiOutput?.sanctionedPrincipal?.value,
+            processingFeeAmount = procFeeAmount ?: geminiOutput?.processingFeeAmount?.value,
+            processingFeeGst = procFeeGst ?: geminiOutput?.gstOnProcessingFee?.value,
+            stampDuty = stampDutyAmount ?: geminiOutput?.stampDuty?.value,
+            documentationCharges = docChargesAmount ?: geminiOutput?.documentationCharges?.value,
+            insuranceCharges = insuranceAmount ?: geminiOutput?.insuranceCharges?.value,
             otherUpfrontDeductions = 0.0,
-            totalUpfrontDeductions = totalUpfrontDeductions,
+            totalUpfrontDeductions = totalUpfrontDeductions ?: geminiOutput?.totalUpfrontDeductions?.value,
             estimatedNetDisbursal = estimatedNetDisbursal,
-            totalInterest = calculatedTotalInterest,
-            totalScheduledEmis = calculatedTotalRepayment,
-            totalRepaymentScheduled = calculatedTotalRepayment,
+            totalInterest = calculatedTotalInterest ?: geminiOutput?.totalInterest?.value,
+            totalScheduledEmis = calculatedTotalRepayment ?: geminiOutput?.totalRepayment?.value,
+            totalRepaymentScheduled = calculatedTotalRepayment ?: geminiOutput?.totalRepayment?.value,
             otherMandatoryCharges = 0.0,
             totalEstimatedBorrowerCost = totalBorrowerCost,
             itemizedCharges = itemizedCharges,
@@ -577,6 +637,10 @@ object LoanAgreementAnalyzer {
             keyObligations = keyObligations,
             questionsForLender = questionsForLender,
             rawPages = pages,
+            isUserReviewed = false,
+            completenessReport = completeness,
+            unrecognizedTerms = geminiOutput?.otherDetectedTerms ?: emptyList(),
+            extractionSourceSummary = sourceSummary,
             terms = terms,
             feesAndPenalties = fees,
             missingInformation = missing,
@@ -584,642 +648,193 @@ object LoanAgreementAnalyzer {
         )
     }
 
-    private fun extractLoanType(pages: List<PageExtraction>, fullText: String): ExtractedMatch<String> {
-        val types = listOf(
-            "Home Loan" to listOf("home loan", "housing loan", "mortgage loan"),
-            "Vehicle Loan" to listOf("vehicle loan", "auto loan", "car loan", "two wheeler loan"),
-            "Personal Loan" to listOf("personal loan", "consumer loan", "salary loan"),
-            "Education Loan" to listOf("education loan", "student loan"),
-            "Business Loan" to listOf("business loan", "commercial loan", "msme loan"),
-            "Gold Loan" to listOf("gold loan"),
-        )
-        for (page in pages) {
-            for ((type, keywords) in types) {
-                for (kw in keywords) {
-                    if (page.text.contains(kw, ignoreCase = true)) {
-                        return ExtractedMatch(type, "Matched \"$kw\"", page.pageNumber)
-                    }
-                }
+    suspend fun analyzeWithAi(
+        documentName: String,
+        extraction: DocumentExtractionResult,
+        reportId: String = UUID.randomUUID().toString(),
+        geminiAssistant: GeminiLoanAssistant? = null,
+    ): AnalysisReport {
+        val geminiOutput = if (geminiAssistant != null && extraction.pages.isNotEmpty()) {
+            when (val res = geminiAssistant.extractStructuredTerms(extraction.pages)) {
+                is GeminiExtractionResult.Success -> res.output
+                is GeminiExtractionResult.Failure -> null
             }
-        }
-        return ExtractedMatch("Personal Loan Facility", "Standard Loan Agreement", 1)
+        } else null
+
+        return analyze(documentName, extraction, reportId, geminiOutput)
     }
 
-    private fun extractPrincipal(pages: List<PageExtraction>, fullText: String): ExtractedMatch<Double>? {
-        val pattern = Regex(
-            """(?:sanctioned\s+amount|loan\s+amount|principal\s+amount|loan\s+of|amount\s+of\s+loan|facility\s+amount|facility\s+of)\D{1,30}(?:rs\.?|inr|₹)?\s*([0-9]{1,3}(?:,[0-9]{2,3})*(?:\.[0-9]{2})?)""",
-            RegexOption.IGNORE_CASE,
-        )
-        for (page in pages) {
-            val match = pattern.find(page.text)
-            if (match != null) {
-                val numStr = match.groupValues[1].replace(",", "")
-                val value = numStr.toDoubleOrNull()
-                if (value != null && value >= 1000) {
-                    return ExtractedMatch(value, match.value.trim(), page.pageNumber, "Clause 1.1")
-                }
+    /**
+     * Recalculates an existing report with user-reviewed or corrected loan values.
+     * Preserves original OCR evidence snippets while updating amortisation, net disbursal, and risks.
+     */
+    fun recalculateWithCustomTerms(
+        originalReport: AnalysisReport,
+        principal: Double? = originalReport.loanSnapshot.sanctionedPrincipal,
+        annualRatePercent: Double? = originalReport.loanSnapshot.annualRatePercent,
+        tenureMonths: Int? = originalReport.loanSnapshot.tenureMonths,
+        statedEmi: Double? = originalReport.loanSnapshot.statedEmi,
+        interestMethod: InterestMethod? = originalReport.loanSnapshot.interestMethod,
+        processingFeeAmount: Double? = originalReport.financialBreakdown.processingFeeAmount,
+        lenderName: String? = originalReport.loanSnapshot.lenderName,
+        borrowerName: String? = originalReport.loanSnapshot.borrowerName,
+    ): AnalysisReport {
+        val calcMethod = interestMethod ?: InterestMethod.REDUCING_BALANCE
+        var calculatedEmi: Double? = null
+        var calculatedTotalRepayment: Double? = null
+        var calculatedTotalInterest: Double? = null
+        var emiDifference: Double? = null
+        var totalDifference: Double? = null
+
+        val updatedCharges = originalReport.feesAndCharges.toMutableList()
+
+        if (principal != null && annualRatePercent != null && tenureMonths != null) {
+            val calc = LoanCalculator.calculate(LoanInput(principal, annualRatePercent, tenureMonths, calcMethod))
+            calculatedEmi = calc.installment
+            calculatedTotalRepayment = calc.totalRepayment
+            calculatedTotalInterest = calc.totalInterest
+
+            if (statedEmi != null) {
+                emiDifference = statedEmi - calc.installment
+            }
+            if (statedEmi != null) {
+                totalDifference = (statedEmi * tenureMonths) - calc.totalRepayment
             }
         }
 
-        // Word format e.g. 5 Lakhs, 50 Lakhs
-        val wordPattern = Regex(
-            """(?:sanctioned\s+amount|loan\s+amount|principal)\D{1,25}(?:rs\.?|inr|₹)?\s*([0-9]+(?:\.[0-9]+)?)\s*(lakhs?|lacs?|crores?|cr\b)""",
-            RegexOption.IGNORE_CASE,
-        )
-        for (page in pages) {
-            val match = wordPattern.find(page.text)
-            if (match != null) {
-                val num = match.groupValues[1].toDoubleOrNull()
-                val unit = match.groupValues[2].lowercase()
-                if (num != null) {
-                    val multiplier = if (unit.startsWith("cr")) 10_000_000.0 else 100_000.0
-                    val value = num * multiplier
-                    return ExtractedMatch(value, match.value.trim(), page.pageNumber, "Clause 1.1")
-                }
-            }
-        }
-        return null
-    }
+        // Upfront deductions
+        val procFeeGst = if (processingFeeAmount != null && processingFeeAmount > 0) {
+            (processingFeeAmount * 0.18 * 100.0).roundToInt() / 100.0
+        } else null
 
-    private fun extractInterestRate(pages: List<PageExtraction>, fullText: String): ExtractedMatch<Double>? {
-        val pattern = Regex(
-            """(?:interest\s+rate|rate\s+of\s+interest|roi|annual\s+rate|interest\s+at)\D{1,25}([0-9]{1,2}(?:\.[0-9]{1,2})?)\s*%""",
-            RegexOption.IGNORE_CASE,
-        )
-        for (page in pages) {
-            val match = pattern.find(page.text)
-            if (match != null) {
-                val rate = match.groupValues[1].toDoubleOrNull()
-                if (rate != null && rate in 1.0..60.0) {
-                    return ExtractedMatch(rate, match.value.trim(), page.pageNumber, "Clause 2.1")
-                }
-            }
-        }
-        val fallback = Regex("""([0-9]{1,2}(?:\.[0-9]{1,2})?)\s*%\s*(?:p\.?a\.?|per\s+annum)""", RegexOption.IGNORE_CASE)
-        for (page in pages) {
-            val fbMatch = fallback.find(page.text)
-            if (fbMatch != null) {
-                val rate = fbMatch.groupValues[1].toDoubleOrNull()
-                if (rate != null && rate in 1.0..60.0) {
-                    return ExtractedMatch(rate, fbMatch.value.trim(), page.pageNumber, "Clause 2.1")
-                }
-            }
-        }
-        return null
-    }
+        val otherDeductions = (originalReport.financialBreakdown.stampDuty ?: 0.0) +
+            (originalReport.financialBreakdown.documentationCharges ?: 0.0) +
+            (originalReport.financialBreakdown.insuranceCharges ?: 0.0)
 
-    private fun extractInterestMethod(pages: List<PageExtraction>, fullText: String): ExtractedMatch<InterestMethod>? {
-        for (page in pages) {
-            if (page.text.contains("reducing balance", ignoreCase = true) ||
-                page.text.contains("diminishing balance", ignoreCase = true) ||
-                page.text.contains("reducing basis", ignoreCase = true)
-            ) {
-                return ExtractedMatch(InterestMethod.REDUCING_BALANCE, "Reducing balance basis stated in agreement", page.pageNumber)
-            }
-            if (page.text.contains("flat rate", ignoreCase = true) ||
-                page.text.contains("flat basis", ignoreCase = true)
-            ) {
-                return ExtractedMatch(InterestMethod.FLAT, "Flat rate basis stated in agreement", page.pageNumber)
-            }
-        }
-        return null
-    }
+        val totalUpfront = if (processingFeeAmount != null || otherDeductions > 0) {
+            (processingFeeAmount ?: 0.0) + (procFeeGst ?: 0.0) + otherDeductions
+        } else null
 
-    private fun extractTenure(pages: List<PageExtraction>, fullText: String): ExtractedMatch<Int>? {
-        val monthPattern = Regex(
-            """(?:tenure|term|period|duration|repayable\s+in)\D{1,25}([0-9]{1,3})\s*(?:months?|m\b|monthly\s+instalments?)""",
-            RegexOption.IGNORE_CASE,
-        )
-        for (page in pages) {
-            val mMatch = monthPattern.find(page.text)
-            if (mMatch != null) {
-                val months = mMatch.groupValues[1].toIntOrNull()
-                if (months != null && months in 3..360) {
-                    return ExtractedMatch(months, mMatch.value.trim(), page.pageNumber, "Clause 3.1")
-                }
-            }
-        }
+        val estimatedNetDisbursal = if (principal != null) {
+            LoanCalculator.calculateNetDisbursal(principal, totalUpfront ?: 0.0)
+        } else null
 
-        val yearPattern = Regex(
-            """(?:tenure|term|period|duration|repayable\s+over)\D{1,25}([0-9]{1,2}(?:\.[0-9]+)?)\s*(?:years?|yrs?\b)""",
-            RegexOption.IGNORE_CASE,
-        )
-        for (page in pages) {
-            val yMatch = yearPattern.find(page.text)
-            if (yMatch != null) {
-                val years = yMatch.groupValues[1].toDoubleOrNull()
-                if (years != null && years in 0.5..30.0) {
-                    val months = (years * 12).roundToInt()
-                    return ExtractedMatch(months, "${yMatch.value.trim()} ($months months)", page.pageNumber, "Clause 3.1")
-                }
-            }
-        }
-        return null
-    }
+        val totalBorrowerCost = if (calculatedTotalRepayment != null) {
+            calculatedTotalRepayment + (totalUpfront ?: 0.0)
+        } else null
 
-    private fun extractStatedEmi(pages: List<PageExtraction>, fullText: String): ExtractedMatch<Double>? {
-        val pattern = Regex(
-            """(?:emi|monthly\s+installment|equated\s+monthly\s+installment|monthly\s+instalment)\D{1,30}(?:rs\.?|inr|₹)?\s*([0-9]{1,3}(?:,[0-9]{2,3})*(?:\.[0-9]{2})?)""",
-            RegexOption.IGNORE_CASE,
-        )
-        for (page in pages) {
-            val match = pattern.find(page.text)
-            if (match != null) {
-                val numStr = match.groupValues[1].replace(",", "")
-                val value = numStr.toDoubleOrNull()
-                if (value != null && value >= 100) {
-                    return ExtractedMatch(value, match.value.trim(), page.pageNumber, "Clause 3.2")
-                }
-            }
-        }
-        return null
-    }
-
-    private fun extractStatedTotalRepayment(pages: List<PageExtraction>, fullText: String): ExtractedMatch<Double>? {
-        val pattern = Regex(
-            """(?:total\s+repayment|total\s+amount\s+payable|sum\s+of\s+instalments|total\s+payable)\D{1,30}(?:rs\.?|inr|₹)?\s*([0-9]{1,3}(?:,[0-9]{2,3})*(?:\.[0-9]{2})?)""",
-            RegexOption.IGNORE_CASE,
-        )
-        for (page in pages) {
-            val match = pattern.find(page.text)
-            if (match != null) {
-                val numStr = match.groupValues[1].replace(",", "")
-                val value = numStr.toDoubleOrNull()
-                if (value != null && value >= 1000) {
-                    return ExtractedMatch(value, match.value.trim(), page.pageNumber, "Clause 3.3")
-                }
-            }
-        }
-        return null
-    }
-
-    data class ProcessingFeeInfo(
-        val feeAmount: Double,
-        val gstAmount: Double?,
-        val totalWithGst: Double,
-        val percentage: Double?,
-        val fixedAmount: Double?,
-        val gstRatePercent: Double?,
-        val isGstIncluded: Boolean,
-        val isGstAssumed: Boolean,
-        val isUpfront: Boolean,
-        val formulaDescription: String,
-        val summaryText: String,
-        val assumptions: String?,
-        val snippet: String,
-        val pageNumber: Int,
-        val clause: String?,
-        val kind: EvidenceKind,
-    )
-
-    private fun extractProcessingFeeDetails(
-        pages: List<PageExtraction>,
-        fullText: String,
-        principal: Double?,
-    ): ProcessingFeeInfo? {
-        val pattern = Regex(
-            """(?:processing\s+fee|admin\s+fee|processing\s+charge)\D{1,35}((?:[0-9]{1,2}(?:\.[0-9]{1,2})?\s*%)|(?:(?:rs\.?|inr|₹)?\s*[0-9,]+(?:\.[0-9]{2})?))""",
-            RegexOption.IGNORE_CASE,
+        val updatedSnapshot = originalReport.loanSnapshot.copy(
+            lenderName = lenderName ?: originalReport.loanSnapshot.lenderName,
+            borrowerName = borrowerName ?: originalReport.loanSnapshot.borrowerName,
+            sanctionedPrincipal = principal,
+            annualRatePercent = annualRatePercent,
+            interestMethod = calcMethod,
+            tenureMonths = tenureMonths,
+            tenureYears = tenureMonths?.let { it.toDouble() / 12.0 },
+            statedEmi = statedEmi,
+            calculatedEmi = calculatedEmi,
+            emiDifference = emiDifference,
+            calculatedTotalRepayment = calculatedTotalRepayment,
+            totalRepaymentDifference = totalDifference,
         )
 
-        for (page in pages) {
-            val match = pattern.find(page.text)
-            if (match != null) {
-                val matchedText = match.groupValues[1].trim()
-                val contextWindow = page.text.substring(
-                    (match.range.first - 40).coerceAtLeast(0),
-                    (match.range.last + 80).coerceAtMost(page.text.length),
-                )
-
-                val hasGstMention = contextWindow.contains("gst", ignoreCase = true) ||
-                    contextWindow.contains("tax", ignoreCase = true)
-                val isGstIncluded = contextWindow.contains("inclusive of gst", ignoreCase = true) ||
-                    contextWindow.contains("including gst", ignoreCase = true) ||
-                    contextWindow.contains("including taxes", ignoreCase = true)
-                val isUpfront = contextWindow.contains("disburs", ignoreCase = true) ||
-                    contextWindow.contains("deduct", ignoreCase = true) ||
-                    contextWindow.contains("prior to", ignoreCase = true) ||
-                    true // Default banking convention is upfront deduction
-
-                val gstRate = if (hasGstMention) 18.0 else null
-                val isGstAssumed = hasGstMention && !contextWindow.contains("18%")
-
-                if (matchedText.endsWith("%")) {
-                    val pct = matchedText.replace("%", "").trim().toDoubleOrNull()
-                    if (pct != null && pct > 0) {
-                        val baseAmount = principal ?: 500_000.0
-                        val rawFee = baseAmount * (pct / 100.0)
-                        val gst = if (gstRate != null && !isGstIncluded) rawFee * (gstRate / 100.0) else null
-                        val total = rawFee + (gst ?: 0.0)
-                        return ProcessingFeeInfo(
-                            feeAmount = rawFee,
-                            gstAmount = gst,
-                            totalWithGst = total,
-                            percentage = pct,
-                            fixedAmount = null,
-                            gstRatePercent = gstRate,
-                            isGstIncluded = isGstIncluded,
-                            isGstAssumed = isGstAssumed,
-                            isUpfront = isUpfront,
-                            formulaDescription = "$pct% of principal" + (if (gstRate != null) " + ${gstRate.toInt()}% GST" else ""),
-                            summaryText = "$pct% of loan amount" + (if (hasGstMention) " + applicable taxes" else ""),
-                            assumptions = if (isGstAssumed) "Assumed standard 18% statutory GST (configurable)" else null,
-                            snippet = match.value.trim(),
-                            pageNumber = page.pageNumber,
-                            clause = "Clause 4.1",
-                            kind = EvidenceKind.EXPLICIT,
-                        )
-                    }
-                } else {
-                    val num = matchedText.replace(Regex("""[^0-9.]"""), "").toDoubleOrNull()
-                    if (num != null && num > 0) {
-                        val gst = if (gstRate != null && !isGstIncluded) num * (gstRate / 100.0) else null
-                        val total = num + (gst ?: 0.0)
-                        return ProcessingFeeInfo(
-                            feeAmount = num,
-                            gstAmount = gst,
-                            totalWithGst = total,
-                            percentage = null,
-                            fixedAmount = num,
-                            gstRatePercent = gstRate,
-                            isGstIncluded = isGstIncluded,
-                            isGstAssumed = isGstAssumed,
-                            isUpfront = isUpfront,
-                            formulaDescription = "${Money.inr(num)} fixed" + (if (gstRate != null) " + ${gstRate.toInt()}% GST" else ""),
-                            summaryText = Money.inr(num) + (if (hasGstMention) " + taxes" else ""),
-                            assumptions = if (isGstAssumed) "Assumed standard 18% statutory GST (configurable)" else null,
-                            snippet = match.value.trim(),
-                            pageNumber = page.pageNumber,
-                            clause = "Clause 4.1",
-                            kind = EvidenceKind.EXPLICIT,
-                        )
-                    }
-                }
-            }
-        }
-        return null
-    }
-
-    private fun extractStampDuty(pages: List<PageExtraction>, fullText: String): ExtractedMatch<Double>? {
-        val pattern = Regex(
-            """(?:stamp\s+duty|stamp\s+paper)\D{1,25}(?:rs\.?|inr|₹)?\s*([0-9,]+(?:\.[0-9]{2})?)""",
-            RegexOption.IGNORE_CASE,
+        val updatedBreakdown = originalReport.financialBreakdown.copy(
+            sanctionedPrincipal = principal,
+            processingFeeAmount = processingFeeAmount,
+            processingFeeGst = procFeeGst,
+            totalUpfrontDeductions = totalUpfront,
+            estimatedNetDisbursal = estimatedNetDisbursal,
+            totalInterest = calculatedTotalInterest,
+            totalScheduledEmis = calculatedTotalRepayment,
+            totalRepaymentScheduled = calculatedTotalRepayment,
+            totalEstimatedBorrowerCost = totalBorrowerCost,
+            itemizedCharges = updatedCharges,
         )
-        for (page in pages) {
-            val match = pattern.find(page.text)
-            if (match != null) {
-                val num = match.groupValues[1].replace(",", "").toDoubleOrNull()
-                if (num != null && num in 50.0..50_000.0) {
-                    return ExtractedMatch(num, match.value.trim(), page.pageNumber, "Schedule B")
-                }
-            }
-        }
-        return null
-    }
 
-    private fun extractDocumentationCharges(pages: List<PageExtraction>, fullText: String): ExtractedMatch<Double>? {
-        val pattern = Regex(
-            """(?:documentation|administrative|doc)\s+charges?\D{1,25}(?:rs\.?|inr|₹)?\s*([0-9,]+(?:\.[0-9]{2})?)""",
-            RegexOption.IGNORE_CASE,
+        val updatedTerms = originalReport.terms.toMutableList()
+        if (principal != null && principal != originalReport.loanSnapshot.sanctionedPrincipal) {
+            val idx = updatedTerms.indexOfFirst { it.label == "Sanctioned amount" }
+            val item = Finding("Sanctioned amount", Money.inr(principal), "User verified in OCR review", EvidenceKind.USER_CORRECTED)
+            if (idx >= 0) updatedTerms[idx] = item else updatedTerms.add(item)
+        }
+        if (annualRatePercent != null && annualRatePercent != originalReport.loanSnapshot.annualRatePercent) {
+            val idx = updatedTerms.indexOfFirst { it.label == "Annual interest rate" }
+            val item = Finding("Annual interest rate", "$annualRatePercent%", "User verified in OCR review", EvidenceKind.USER_CORRECTED)
+            if (idx >= 0) updatedTerms[idx] = item else updatedTerms.add(item)
+        }
+        if (tenureMonths != null && tenureMonths != originalReport.loanSnapshot.tenureMonths) {
+            val idx = updatedTerms.indexOfFirst { it.label == "Tenure" }
+            val item = Finding("Tenure", "$tenureMonths months", "User verified in OCR review", EvidenceKind.USER_CORRECTED)
+            if (idx >= 0) updatedTerms[idx] = item else updatedTerms.add(item)
+        }
+        if (statedEmi != null && statedEmi != originalReport.loanSnapshot.statedEmi) {
+            val idx = updatedTerms.indexOfFirst { it.label == "Stated EMI" }
+            val item = Finding("Stated EMI", Money.inr(statedEmi), "User verified in OCR review", EvidenceKind.USER_CORRECTED)
+            if (idx >= 0) updatedTerms[idx] = item else updatedTerms.add(item)
+        }
+
+        return originalReport.copy(
+            loanSnapshot = updatedSnapshot,
+            financialBreakdown = updatedBreakdown,
+            feesAndCharges = updatedCharges,
+            terms = updatedTerms,
+            isUserReviewed = true,
         )
-        for (page in pages) {
-            val match = pattern.find(page.text)
-            if (match != null) {
-                val num = match.groupValues[1].replace(",", "").toDoubleOrNull()
-                if (num != null && num in 100.0..50_000.0) {
-                    return ExtractedMatch(num, match.value.trim(), page.pageNumber, "Clause 4.3")
-                }
-            }
-        }
-        return null
-    }
-
-    private fun extractInsurance(pages: List<PageExtraction>, fullText: String): ExtractedMatch<Double>? {
-        val pattern = Regex(
-            """(?:credit\s+shield|credit\s+protection|loan\s+insurance|insurance\s+premium)\D{1,30}(?:rs\.?|inr|₹)?\s*([0-9,]+(?:\.[0-9]{2})?)""",
-            RegexOption.IGNORE_CASE,
-        )
-        for (page in pages) {
-            val match = pattern.find(page.text)
-            if (match != null) {
-                val num = match.groupValues[1].replace(",", "").toDoubleOrNull()
-                if (num != null && num in 500.0..100_000.0) {
-                    return ExtractedMatch(num, match.value.trim(), page.pageNumber, "Clause 5.2")
-                }
-            }
-        }
-        return null
-    }
-
-    data class PrepaymentDetails(
-        val percentage: Double?,
-        val hasGstMention: Boolean,
-        val displayText: String,
-        val formulaDescription: String,
-        val assumptions: String?,
-        val snippet: String,
-        val pageNumber: Int,
-        val clause: String?,
-        val kind: EvidenceKind,
-    )
-
-    private fun extractPrepaymentDetails(pages: List<PageExtraction>, fullText: String): PrepaymentDetails? {
-        val pattern = Regex(
-            """(?:foreclosure|prepayment|pre-payment)\D{1,40}(chargeable|allowed|permitted|nil|zero|[0-9]{1,2}(?:\.[0-9]{1,2})?\s*%)""",
-            RegexOption.IGNORE_CASE,
-        )
-        for (page in pages) {
-            val match = pattern.find(page.text)
-            if (match != null) {
-                val captured = match.groupValues[1].trim()
-                val context = page.text.substring(
-                    (match.range.first - 20).coerceAtLeast(0),
-                    (match.range.last + 60).coerceAtMost(page.text.length),
-                )
-                val pct = if (captured.endsWith("%")) captured.replace("%", "").trim().toDoubleOrNull() else null
-                val hasGst = context.contains("gst", ignoreCase = true) || context.contains("tax", ignoreCase = true)
-                val desc = if (pct != null) {
-                    "$pct% of outstanding principal" + (if (hasGst) " + applicable GST" else "")
-                } else {
-                    "Foreclosure condition: $captured"
-                }
-
-                return PrepaymentDetails(
-                    percentage = pct,
-                    hasGstMention = hasGst,
-                    displayText = desc,
-                    formulaDescription = desc,
-                    assumptions = "Charge applies on eligible outstanding principal at the date of foreclosure.",
-                    snippet = match.value.trim(),
-                    pageNumber = page.pageNumber,
-                    clause = "Clause 7.1",
-                    kind = if (pct != null) EvidenceKind.EXPLICIT else EvidenceKind.HEURISTIC,
-                )
-            }
-        }
-        return null
-    }
-
-    data class LatePaymentDetails(
-        val percentage: Double?,
-        val fixedFee: Double?,
-        val displayText: String,
-        val formulaDescription: String,
-        val snippet: String,
-        val pageNumber: Int,
-        val clause: String?,
-        val kind: EvidenceKind,
-    )
-
-    private fun extractLatePaymentDetails(pages: List<PageExtraction>, fullText: String): LatePaymentDetails? {
-        val pattern = Regex(
-            """(?:late\s+payment|penal\s+interest|overdue\s+interest|default\s+charge)\D{1,30}([0-9]{1,2}(?:\.[0-9]{1,2})?\s*%\s*(?:per\s+month|p\.?m\.?|per\s+annum|p\.?a\.?))""",
-            RegexOption.IGNORE_CASE,
-        )
-        for (page in pages) {
-            val match = pattern.find(page.text)
-            if (match != null) {
-                val textMatch = match.groupValues[1].trim()
-                val pct = textMatch.substringBefore("%").trim().toDoubleOrNull()
-                return LatePaymentDetails(
-                    percentage = pct,
-                    fixedFee = null,
-                    displayText = textMatch,
-                    formulaDescription = "$textMatch on overdue installment",
-                    snippet = match.value.trim(),
-                    pageNumber = page.pageNumber,
-                    clause = "Clause 8.1",
-                    kind = EvidenceKind.EXPLICIT,
-                )
-            }
-        }
-        return null
-    }
-
-    private fun findRevisionClauses(pages: List<PageExtraction>, fullText: String): List<ExtractedMatch<String>> {
-        val keywords = listOf(
-            "revise charges",
-            "at the discretion of",
-            "sole discretion",
-            "as notified by the lender",
-            "subject to change without notice",
-        )
-        val matches = mutableListOf<ExtractedMatch<String>>()
-        for (page in pages) {
-            for (kw in keywords) {
-                val idx = page.text.indexOf(kw, ignoreCase = true)
-                if (idx >= 0) {
-                    val start = (idx - 30).coerceAtLeast(0)
-                    val end = (idx + kw.length + 50).coerceAtMost(page.text.length)
-                    matches.add(
-                        ExtractedMatch(
-                            value = kw,
-                            snippet = page.text.substring(start, end).replace('\n', ' ').trim(),
-                            pageNumber = page.pageNumber,
-                            clause = "Revision Term",
-                        ),
-                    )
-                }
-            }
-        }
-        return matches
     }
 
     private fun buildKeyObligations(
         pages: List<PageExtraction>,
-        text: String,
-        prepayment: PrepaymentDetails?,
-        lateCharge: LatePaymentDetails?,
+        prepaymentMatch: ExtractedPrepaymentDetails?,
+        lateChargeMatch: ExtractedLatePaymentDetails?,
     ): List<KeyObligation> {
         val obligations = mutableListOf<KeyObligation>()
 
-        // 1. Prepayment & Foreclosure
-        if (prepayment != null) {
+        // 1. Timely Repayment
+        obligations.add(
+            KeyObligation(
+                category = "Monthly Repayment",
+                summary = "Repayment via NACH / ECS / Auto-debit",
+                status = ObligationStatus.EXTRACTED,
+                details = "Equated monthly instalments must be paid on or before the designated monthly due date.",
+                pageNumber = 1,
+            ),
+        )
+
+        // 2. Prepayment
+        if (prepaymentMatch != null) {
             obligations.add(
                 KeyObligation(
                     category = "Prepayment & Foreclosure",
-                    summary = prepayment.displayText,
+                    summary = prepaymentMatch.displayText,
                     status = ObligationStatus.EXTRACTED,
-                    details = "Foreclosure permitted subject to stated fees and terms.",
-                    evidence = prepayment.snippet,
-                    pageNumber = prepayment.pageNumber,
-                    clauseReference = prepayment.clause,
+                    details = "Foreclosure permitted subject to ${prepaymentMatch.displayText} charges.",
+                    evidence = prepaymentMatch.snippet,
+                    pageNumber = prepaymentMatch.pageNumber,
+                    clauseReference = prepaymentMatch.clause,
                 ),
             )
         } else {
             obligations.add(
                 KeyObligation(
                     category = "Prepayment & Foreclosure",
-                    summary = "Foreclosure terms not found in analyzed text",
+                    summary = "Foreclosure terms not found",
                     status = ObligationStatus.NOT_FOUND,
-                    details = "No explicit prepayment condition was identified. ('Not found' does not mean it does not exist in the agreement).",
+                    details = "Check with lender regarding lock-in period and partial prepayment rules.",
                 ),
             )
         }
 
-        // 2. Collateral / Security
-        val collateralMatch = pages.firstOrNull {
-            it.text.contains("hypothecat", ignoreCase = true) ||
-                it.text.contains("mortgage", ignoreCase = true) ||
-                it.text.contains("unsecured", ignoreCase = true) ||
-                it.text.contains("clean loan", ignoreCase = true) ||
-                it.text.contains("promissory note", ignoreCase = true)
-        }
-        if (collateralMatch != null) {
-            val isUnsecured = collateralMatch.text.contains("unsecured", ignoreCase = true) ||
-                collateralMatch.text.contains("clean loan", ignoreCase = true)
+        // 3. Late Payment
+        if (lateChargeMatch != null) {
             obligations.add(
                 KeyObligation(
-                    category = "Collateral & Security",
-                    summary = if (isUnsecured) "Unsecured loan / Demand Promissory Note" else "Security / Charge on assets required",
+                    category = "Default & Penal Charges",
+                    summary = lateChargeMatch.displayText,
                     status = ObligationStatus.EXTRACTED,
-                    details = if (isUnsecured) "No asset collateral pledged; supported by borrower personal covenant." else "Asset hypothecation or mortgage stipulated.",
-                    pageNumber = collateralMatch.pageNumber,
-                    clauseReference = "Security Clause",
-                ),
-            )
-        } else {
-            obligations.add(
-                KeyObligation(
-                    category = "Collateral & Security",
-                    summary = "Security details not found in analyzed text",
-                    status = ObligationStatus.NOT_FOUND,
-                    details = "Collateral or hypothecation terms were not explicitly detected.",
-                ),
-            )
-        }
-
-        // 3. Guarantor Obligations
-        val guarantorMatch = pages.firstOrNull {
-            it.text.contains("guarantor", ignoreCase = true) ||
-                it.text.contains("co-borrower", ignoreCase = true) ||
-                it.text.contains("co-applicant", ignoreCase = true)
-        }
-        if (guarantorMatch != null) {
-            obligations.add(
-                KeyObligation(
-                    category = "Guarantor Obligations",
-                    summary = "Co-borrower or guarantor obligation detected",
-                    status = ObligationStatus.REVIEW_REQUIRED,
-                    details = "Verify whether guarantor liability is joint, several, and continuous.",
-                    pageNumber = guarantorMatch.pageNumber,
-                ),
-            )
-        } else {
-            obligations.add(
-                KeyObligation(
-                    category = "Guarantor Obligations",
-                    summary = "No guarantor requirement identified in scanned pages",
-                    status = ObligationStatus.NOT_FOUND,
-                    details = "No explicit guarantor stipulation was located in the analyzed text.",
-                ),
-            )
-        }
-
-        // 4. Insurance
-        val insuranceMatch = pages.firstOrNull {
-            it.text.contains("insurance", ignoreCase = true) ||
-                it.text.contains("credit shield", ignoreCase = true)
-        }
-        if (insuranceMatch != null) {
-            obligations.add(
-                KeyObligation(
-                    category = "Insurance",
-                    summary = "Credit life or property insurance mentioned",
-                    status = ObligationStatus.REVIEW_REQUIRED,
-                    details = "Check whether insurance coverage is strictly mandatory or an optional opt-out add-on.",
-                    pageNumber = insuranceMatch.pageNumber,
-                    clauseReference = "Insurance Term",
-                ),
-            )
-        } else {
-            obligations.add(
-                KeyObligation(
-                    category = "Insurance",
-                    summary = "Insurance conditions not found",
-                    status = ObligationStatus.NOT_FOUND,
-                    details = "No mandatory insurance requirements detected in analyzed text.",
-                ),
-            )
-        }
-
-        // 5. Late Payment Terms
-        if (lateCharge != null) {
-            obligations.add(
-                KeyObligation(
-                    category = "Late Payment Terms",
-                    summary = lateCharge.displayText,
-                    status = ObligationStatus.EXTRACTED,
-                    details = "Default in payment accrues penal interest at stated rates until cured.",
-                    evidence = lateCharge.snippet,
-                    pageNumber = lateCharge.pageNumber,
-                    clauseReference = lateCharge.clause,
-                ),
-            )
-        } else {
-            obligations.add(
-                KeyObligation(
-                    category = "Late Payment Terms",
-                    summary = "Late payment terms not found",
-                    status = ObligationStatus.NOT_FOUND,
-                    details = "Specific default charges were not identified in analyzed pages.",
-                ),
-            )
-        }
-
-        // 6. Interest Rate Changes / Variations
-        val variationMatch = pages.firstOrNull {
-            it.text.contains("sole discretion", ignoreCase = true) ||
-                it.text.contains("at the discretion", ignoreCase = true) ||
-                it.text.contains("revise", ignoreCase = true) ||
-                it.text.contains("floating", ignoreCase = true) ||
-                it.text.contains("mclr", ignoreCase = true) ||
-                it.text.contains("eblr", ignoreCase = true)
-        }
-        if (variationMatch != null) {
-            obligations.add(
-                KeyObligation(
-                    category = "Interest Rate Changes",
-                    summary = "Rate variation or lender discretion clause detected",
-                    status = ObligationStatus.REVIEW_REQUIRED,
-                    details = "Agreement contains clauses allowing rate adjustments or benchmark resets.",
-                    pageNumber = variationMatch.pageNumber,
-                ),
-            )
-        } else {
-            obligations.add(
-                KeyObligation(
-                    category = "Interest Rate Changes",
-                    summary = "Fixed rate / no variation clause found",
-                    status = ObligationStatus.NOT_FOUND,
-                    details = "No explicit rate variation or benchmark reset clause identified in analyzed pages.",
-                ),
-            )
-        }
-
-        // 7. Other Obligations
-        val noticeMatch = pages.firstOrNull {
-            it.text.contains("notify", ignoreCase = true) ||
-                it.text.contains("change of address", ignoreCase = true) ||
-                it.text.contains("employment", ignoreCase = true)
-        }
-        if (noticeMatch != null) {
-            obligations.add(
-                KeyObligation(
-                    category = "Other Borrower Obligations",
-                    summary = "Obligation to notify change of address, employment, or bank account",
-                    status = ObligationStatus.EXTRACTED,
-                    details = "Borrower is required to report personal, residential, or employment changes to lender.",
-                    pageNumber = noticeMatch.pageNumber,
-                ),
-            )
-        } else {
-            obligations.add(
-                KeyObligation(
-                    category = "Other Borrower Obligations",
-                    summary = "Standard borrower covenants apply",
-                    status = ObligationStatus.NOT_FOUND,
-                    details = "No unusual non-financial covenants detected in analyzed text.",
+                    details = "Delayed instalments accrue penal interest at ${lateChargeMatch.displayText}.",
+                    evidence = lateChargeMatch.snippet,
+                    pageNumber = lateChargeMatch.pageNumber,
+                    clauseReference = lateChargeMatch.clause,
                 ),
             )
         }
@@ -1232,8 +847,8 @@ object LoanAgreementAnalyzer {
         statedEmi: Double?,
         calculatedEmi: Double?,
         interestMethod: InterestMethod?,
-        prepaymentMatch: PrepaymentDetails?,
-        procFeeMatch: ProcessingFeeInfo?,
+        prepaymentMatch: ExtractedPrepaymentDetails?,
+        procFeeMatch: ExtractedProcessingFee?,
         insuranceMatch: ExtractedMatch<Double>?,
         revisionClauses: List<ExtractedMatch<String>>,
     ): List<String> {
@@ -1270,7 +885,6 @@ object LoanAgreementAnalyzer {
         }
 
         questions.add("Can the lender provide the complete amortization schedule showing month-by-month principal and interest allocation?")
-
         return questions
     }
 }

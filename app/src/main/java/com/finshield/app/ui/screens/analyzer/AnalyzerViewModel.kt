@@ -162,13 +162,21 @@ class AnalyzerViewModel : ViewModel() {
                     return@launch
                 }
 
-                _state.update { it.copy(progressMessage = "Analyzing clauses, interest rates & EMI…") }
+                val consentStore = com.finshield.app.domain.analyzer.AiConsentStore(context)
+                val geminiAssistant = if (consentStore.isAiEnabled && consentStore.hasUserConsented) {
+                    _state.update { it.copy(progressMessage = "Extracting terms with Gemini AI & financial validation…") }
+                    com.finshield.app.domain.analyzer.GeminiLoanAssistant()
+                } else {
+                    _state.update { it.copy(progressMessage = "Analyzing clauses, interest rates & EMI…") }
+                    null
+                }
 
                 val reportId = UUID.randomUUID().toString()
-                val report = LoanAgreementAnalyzer.analyze(
+                val report = LoanAgreementAnalyzer.analyzeWithAi(
                     documentName = doc.displayName,
                     extraction = extraction,
                     reportId = reportId,
+                    geminiAssistant = geminiAssistant,
                 )
 
                 // Store report in in-memory session store

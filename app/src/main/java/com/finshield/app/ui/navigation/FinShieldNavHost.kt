@@ -142,8 +142,8 @@ fun FinShieldNavHost(navController: NavHostController = rememberNavController())
             }
             composable(Routes.ANALYZE) {
                 AnalyzerScreen(
-                    onOpenSampleReport = { openReport("sample") },
-                    onOpenReport = openReport,
+                    onOpenSampleReport = { navController.navigate(Routes.ocrReview("sample")) },
+                    onOpenReport = { reportId -> navController.navigate(Routes.ocrReview(reportId)) },
                     onBack = {
                         val popped = navController.popBackStack()
                         if (!popped) {
@@ -180,6 +180,21 @@ fun FinShieldNavHost(navController: NavHostController = rememberNavController())
                 )
             }
             composable(
+                Routes.OCR_REVIEW,
+                arguments = listOf(navArgument("id") { type = NavType.StringType }),
+            ) { entry ->
+                val reportId = entry.arguments?.getString("id") ?: "sample"
+                com.finshield.app.ui.screens.analyzer.OcrReviewScreen(
+                    reportId = reportId,
+                    onConfirmAndProceed = { id ->
+                        navController.navigate(Routes.report(id)) {
+                            popUpTo(Routes.ANALYZE)
+                        }
+                    },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(
                 Routes.REPORT,
                 arguments = listOf(navArgument("id") { type = NavType.StringType }),
             ) { entry ->
@@ -188,6 +203,7 @@ fun FinShieldNavHost(navController: NavHostController = rememberNavController())
                     onBack = { navController.popBackStack() },
                     onOpenCalculator = { navController.navigate(Routes.CALCULATOR) },
                     onOpenCompleteBreakdown = { navController.navigate(Routes.completeBreakdown(it)) },
+                    onOpenOcrReview = { navController.navigate(Routes.ocrReview(it)) },
                 )
             }
             composable(
