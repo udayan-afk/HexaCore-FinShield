@@ -10,6 +10,7 @@ import com.finshield.app.ui.theme.FinShieldTheme
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.finshield.app.data.AppContainer.init(applicationContext)
         enableEdgeToEdge()
         setContent {
             FinShieldTheme {

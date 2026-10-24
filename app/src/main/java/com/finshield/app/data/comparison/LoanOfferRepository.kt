@@ -1,13 +1,61 @@
 package com.finshield.app.data.comparison
 
+import android.content.Context
 import com.finshield.app.domain.calculator.InterestMethod
+import com.finshield.app.model.LenderClassification
+import com.finshield.app.model.LenderRecord
 import com.finshield.app.model.LoanCategory
 import com.finshield.app.model.LoanOffer
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flowOf
 
 interface LoanOfferRepository {
     fun getAllOffers(): Flow<List<LoanOffer>>
+    fun getAllLenderRecords(): Flow<List<LenderRecord>> = flowOf(emptyList())
+}
+
+/**
+ * Production-ready repository loading the research-backed 32-lender catalogue from `lenders.csv`.
+ * Falls back gracefully in test environments using ClassLoader resources.
+ */
+class AssetLoanOfferRepository(
+    private val context: Context? = null,
+) : LoanOfferRepository {
+
+    private val _lenderRecords = MutableStateFlow<List<LenderRecord>>(emptyList())
+    private val _offers = MutableStateFlow<List<LoanOffer>>(emptyList())
+
+    init {
+        loadData()
+    }
+
+    private fun loadData() {
+        val records = LenderCsvParser.loadFromAssetsOrClasspath(context, "lenders.csv")
+        if (records.isNotEmpty()) {
+            _lenderRecords.value = records
+            _offers.value = records.map { it.toLoanOffer() }
+        } else {
+            // Fallback to sample offers if asset stream unavailable
+            _offers.value = DemoLoanOfferRepository.SAMPLE_OFFERS
+        }
+    }
+
+    override fun getAllOffers(): Flow<List<LoanOffer>> = _offers.asStateFlow()
+
+    override fun getAllLenderRecords(): Flow<List<LenderRecord>> = _lenderRecords.asStateFlow()
+
+    companion object {
+        @Volatile
+        private var INSTANCE: AssetLoanOfferRepository? = null
+
+        fun getInstance(context: Context? = null): AssetLoanOfferRepository {
+            return INSTANCE ?: synchronized(this) {
+                INSTANCE ?: AssetLoanOfferRepository(context).also { INSTANCE = it }
+            }
+        }
+    }
 }
 
 class DemoLoanOfferRepository : LoanOfferRepository {
@@ -15,7 +63,6 @@ class DemoLoanOfferRepository : LoanOfferRepository {
 
     companion object {
         val SAMPLE_OFFERS = listOf(
-            // Personal Loans (Exact matches to Figma screenshot)
             LoanOffer(
                 id = "aster-personal",
                 lenderName = "Aster Finance",
@@ -68,162 +115,53 @@ class DemoLoanOfferRepository : LoanOfferRepository {
                 isVerifiedSource = false,
                 officialUrl = null,
             ),
-
-            // Home Loans
             LoanOffer(
-                id = "apex-home",
-                lenderName = "Apex Housing Finance",
-                offerName = "Prime Home Loan",
-                category = LoanCategory.HOME,
-                annualRatePercent = 8.50,
+                id = "axis-bank",
+                lenderName = "Axis Bank",
+                offerName = "Personal Loan",
+                category = LoanCategory.PERSONAL,
+                annualRatePercent = 9.99,
                 interestMethod = InterestMethod.REDUCING_BALANCE,
-                processingFeeFixed = 10000.0,
+                processingFeeFixed = 0.0,
+                processingFeePercent = 2.0,
                 hasGst = true,
-                minAmount = 500_000.0,
-                maxAmount = 50_000_000.0,
-                minTenureMonths = 36,
-                maxTenureMonths = 360,
-                eligibilityNotes = "Salaried / Self-employed, 21–65",
+                lenderClassification = LenderClassification.PRIVATE_BANK,
+                publishedInterestRate = "9.99% onwards",
+                eligibilityNotes = "Profile-dependent; verify official age, income, employment and credit rules.",
                 isVerifiedSource = false,
-                officialUrl = null,
+                officialUrl = "https://www.paisabazaar.com/personal-loan/interest-rates/",
             ),
             LoanOffer(
-                id = "horizon-home",
-                lenderName = "Horizon Home Loans",
-                offerName = "Smart Saver Home Loan",
-                category = LoanCategory.HOME,
-                annualRatePercent = 8.75,
+                id = "bandhan-bank",
+                lenderName = "Bandhan Bank",
+                offerName = "Personal Loan",
+                category = LoanCategory.PERSONAL,
+                annualRatePercent = 8.86,
                 interestMethod = InterestMethod.REDUCING_BALANCE,
-                processingFeeFixed = 8500.0,
+                processingFeeFixed = 0.0,
+                processingFeePercent = 3.0,
                 hasGst = true,
-                minAmount = 500_000.0,
-                maxAmount = 40_000_000.0,
-                minTenureMonths = 36,
-                maxTenureMonths = 300,
-                eligibilityNotes = "Credit score 750+",
+                lenderClassification = LenderClassification.PRIVATE_BANK,
+                publishedInterestRate = "8.86% onwards",
+                eligibilityNotes = "Verify current official applicant and income criteria.",
                 isVerifiedSource = false,
-                officialUrl = null,
+                officialUrl = "https://www.paisabazaar.com/personal-loan/interest-rates/",
             ),
             LoanOffer(
-                id = "greenfield-home",
-                lenderName = "Greenfield Mortgage",
-                offerName = "Affordable Housing Credit",
-                category = LoanCategory.HOME,
-                annualRatePercent = 9.15,
+                id = "state-bank-of-india",
+                lenderName = "State Bank of India",
+                offerName = "Personal Loan",
+                category = LoanCategory.PERSONAL,
+                annualRatePercent = 10.00,
                 interestMethod = InterestMethod.REDUCING_BALANCE,
-                processingFeeFixed = 6000.0,
+                processingFeeFixed = 0.0,
+                processingFeePercent = 1.5,
                 hasGst = true,
-                eligibilityNotes = "First-time home buyers",
+                lenderClassification = LenderClassification.PUBLIC_BANK,
+                publishedInterestRate = "10.00% onwards",
+                eligibilityNotes = "Some schemes target salaried/salary-account customers; verify rules.",
                 isVerifiedSource = false,
-                officialUrl = null,
-            ),
-
-            // Education Loans
-            LoanOffer(
-                id = "edufund-edu",
-                lenderName = "EduFund Capital",
-                offerName = "Scholar Advantage Loan",
-                category = LoanCategory.EDUCATION,
-                annualRatePercent = 9.25,
-                interestMethod = InterestMethod.REDUCING_BALANCE,
-                processingFeeFixed = 3500.0,
-                hasGst = true,
-                minAmount = 100_000.0,
-                maxAmount = 8_000_000.0,
-                minTenureMonths = 12,
-                maxTenureMonths = 120,
-                eligibilityNotes = "Co-borrower required",
-                isVerifiedSource = false,
-                officialUrl = null,
-            ),
-            LoanOffer(
-                id = "campus-edu",
-                lenderName = "CampusCredit",
-                offerName = "Global Studies Loan",
-                category = LoanCategory.EDUCATION,
-                annualRatePercent = 9.80,
-                interestMethod = InterestMethod.REDUCING_BALANCE,
-                processingFeeFixed = 5000.0,
-                hasGst = true,
-                minAmount = 200_000.0,
-                maxAmount = 15_000_000.0,
-                minTenureMonths = 12,
-                maxTenureMonths = 180,
-                eligibilityNotes = "STEM & Management abroad",
-                isVerifiedSource = false,
-                officialUrl = null,
-            ),
-
-            // Car Loans
-            LoanOffer(
-                id = "beacon-car",
-                lenderName = "Beacon Auto Finance",
-                offerName = "DriveEasy Car Loan",
-                category = LoanCategory.CAR,
-                annualRatePercent = 8.95,
-                interestMethod = InterestMethod.REDUCING_BALANCE,
-                processingFeeFixed = 4500.0,
-                hasGst = true,
-                minAmount = 100_000.0,
-                maxAmount = 5_000_000.0,
-                minTenureMonths = 12,
-                maxTenureMonths = 84,
-                eligibilityNotes = "New & certified pre-owned",
-                isVerifiedSource = false,
-                officialUrl = null,
-            ),
-            LoanOffer(
-                id = "drivestar-car",
-                lenderName = "DriveStar Credit",
-                offerName = "Speedy Auto Advance",
-                category = LoanCategory.CAR,
-                annualRatePercent = 9.40,
-                interestMethod = InterestMethod.REDUCING_BALANCE,
-                processingFeeFixed = 3000.0,
-                hasGst = true,
-                minAmount = 80_000.0,
-                maxAmount = 4_000_000.0,
-                minTenureMonths = 12,
-                maxTenureMonths = 60,
-                eligibilityNotes = "Up to 85% on-road funding",
-                isVerifiedSource = false,
-                officialUrl = null,
-            ),
-
-            // Other Loans
-            LoanOffer(
-                id = "nexus-gold",
-                lenderName = "Nexus Gold Finance",
-                offerName = "Secured Gold Credit",
-                category = LoanCategory.OTHER,
-                annualRatePercent = 9.50,
-                interestMethod = InterestMethod.REDUCING_BALANCE,
-                processingFeeFixed = 1500.0,
-                hasGst = true,
-                minAmount = 25_000.0,
-                maxAmount = 3_000_000.0,
-                minTenureMonths = 6,
-                maxTenureMonths = 36,
-                eligibilityNotes = "Gold ornament collateral",
-                isVerifiedSource = false,
-                officialUrl = null,
-            ),
-            LoanOffer(
-                id = "prosper-msme",
-                lenderName = "Prosper MSME Finance",
-                offerName = "Business Growth Advance",
-                category = LoanCategory.OTHER,
-                annualRatePercent = 14.50,
-                interestMethod = InterestMethod.REDUCING_BALANCE,
-                processingFeeFixed = 6000.0,
-                hasGst = true,
-                minAmount = 100_000.0,
-                maxAmount = 10_000_000.0,
-                minTenureMonths = 12,
-                maxTenureMonths = 60,
-                eligibilityNotes = "2 yrs business vintage",
-                isVerifiedSource = false,
-                officialUrl = null,
+                officialUrl = "https://www.paisabazaar.com/personal-loan/interest-rates/",
             ),
         )
     }

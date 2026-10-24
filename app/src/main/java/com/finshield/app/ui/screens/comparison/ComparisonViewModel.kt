@@ -4,8 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.finshield.app.data.AppContainer
 import com.finshield.app.data.comparison.LoanOfferRepository
-import com.finshield.app.domain.calculator.InterestMethod
 import com.finshield.app.model.ComputedLoanOffer
+import com.finshield.app.model.LenderClassification
 import com.finshield.app.model.LoanCategory
 import com.finshield.app.model.LoanOffer
 import com.finshield.app.model.OfferCalculator
@@ -16,46 +16,67 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 
 enum class ComparisonSortOption(val label: String) {
+    STARTING_RATE("Starting rate"),
+    MONTHLY_EMI("Monthly EMI"),
     TOTAL_COST("Total cost"),
-    INTEREST_RATE("Interest rate"),
-    MONTHLY_EMI("Monthly EMI");
+    LENDER_NAME("Lender name");
 }
 
-enum class MethodFilter(val label: String) {
-    ALL("All methods"),
-    REDUCING("Reducing only"),
-    FLAT("Flat rate only");
+enum class LenderTypeFilter(val label: String) {
+    ALL("All Lenders"),
+    PUBLIC_BANK("Public Banks"),
+    PRIVATE_BANK("Private Banks"),
+    NBFC("NBFCs"),
+    DIGITAL_LENDER("Digital Lenders");
 }
 
 data class ComparisonUiState(
     val searchQuery: String = "",
     val selectedCategory: LoanCategory = LoanCategory.PERSONAL,
-    val methodFilter: MethodFilter = MethodFilter.ALL,
-    val sortOption: ComparisonSortOption = ComparisonSortOption.TOTAL_COST,
+    val lenderTypeFilter: LenderTypeFilter = LenderTypeFilter.ALL,
+    val sortOption: ComparisonSortOption = ComparisonSortOption.STARTING_RATE,
     val principal: Double = 500_000.0,
     val tenureMonths: Int = 36,
-    val selectedOfferIds: Set<String> = setOf("aster-personal", "metro-personal", "swift-personal"),
+    val selectedOfferIds: Set<String> = setOf("sbi", "hdfc-bank", "bajaj-finance"),
     val allOffers: List<LoanOffer> = emptyList(),
     val displayedOffers: List<ComputedLoanOffer> = emptyList(),
     val comparisonTableOffers: List<ComputedLoanOffer> = emptyList(),
     val lowestCostOfferId: String? = null,
     val isEditingTerms: Boolean = false,
     val selectedOfferForDetails: ComputedLoanOffer? = null,
-    val selectedOfferForOfficialDetails: LoanOffer? = null,
+    val datasetVersion: String = "2026.10-research",
+    val datasetRefreshDate: String = "14 Oct 2026",
 )
 
 class ComparisonViewModel(
     private val repository: LoanOfferRepository = AppContainer.loanOffers,
+    coroutineScope: kotlinx.coroutines.CoroutineScope? = null,
 ) : ViewModel() {
 
+    private val scope = coroutineScope ?: viewModelScope
     private val _state = MutableStateFlow(ComparisonUiState())
     val state: StateFlow<ComparisonUiState> = _state.asStateFlow()
 
     init {
         repository.getAllOffers().onEach { offers ->
-            _state.value = _state.value.copy(allOffers = offers)
+            val initialSelected = if (offers.size >= 3) {
+                // Pick 1 Public, 1 Private, 1 NBFC for a rich initial comparison
+                val publicOne = offers.firstOrNull { it.lenderClassification == LenderClassification.PUBLIC_BANK }?.id
+                val privateOne = offers.firstOrNull { it.lenderClassification == LenderClassification.PRIVATE_BANK }?.id
+                val nbfcOne = offers.firstOrNull { it.lenderClassification == LenderClassification.NBFC }?.id
+                setOfNotNull(publicOne, privateOne, nbfcOne)
+            } else {
+                offers.take(3).map { it.id }.toSet()
+            }
+
+            _state.value = _state.value.copy(
+                allOffers = offers,
+                selectedOfferIds = if (_state.value.selectedOfferIds.isEmpty() || !_state.value.allOffers.any { it.id in _state.value.selectedOfferIds }) {
+                    initialSelected
+                } else _state.value.selectedOfferIds,
+            )
             recompute()
-        }.launchIn(viewModelScope)
+        }.launchIn(scope)
     }
 
     fun onSearchQueryChanged(query: String) {
@@ -65,28 +86,24 @@ class ComparisonViewModel(
 
     fun onCategorySelected(category: LoanCategory) {
         if (_state.value.selectedCategory == category) return
-        // Pick initial selected offers in this category for the comparison table
-        val categoryOffers = _state.value.allOffers.filter { it.category == category }
-        val newSelected = categoryOffers.take(3).map { it.id }.toSet()
-        _state.value = _state.value.copy(
-            selectedCategory = category,
-            selectedOfferIds = newSelected,
-        )
+        _state.value = _state.value.copy(selectedCategory = category)
         recompute()
     }
 
-    fun onMethodFilterChanged(filter: MethodFilter) {
-        _state.value = _state.value.copy(methodFilter = filter)
+    fun onLenderTypeFilterChanged(filter: LenderTypeFilter) {
+        _state.value = _state.value.copy(lenderTypeFilter = filter)
         recompute()
     }
 
-    fun cycleMethodFilter() {
-        val next = when (_state.value.methodFilter) {
-            MethodFilter.ALL -> MethodFilter.REDUCING
-            MethodFilter.REDUCING -> MethodFilter.FLAT
-            MethodFilter.FLAT -> MethodFilter.ALL
+    fun cycleLenderTypeFilter() {
+        val next = when (_state.value.lenderTypeFilter) {
+            LenderTypeFilter.ALL -> LenderTypeFilter.PUBLIC_BANK
+            LenderTypeFilter.PUBLIC_BANK -> LenderTypeFilter.PRIVATE_BANK
+            LenderTypeFilter.PRIVATE_BANK -> LenderTypeFilter.NBFC
+            LenderTypeFilter.NBFC -> LenderTypeFilter.DIGITAL_LENDER
+            LenderTypeFilter.DIGITAL_LENDER -> LenderTypeFilter.ALL
         }
-        onMethodFilterChanged(next)
+        onLenderTypeFilterChanged(next)
     }
 
     fun onSortOptionChanged(option: ComparisonSortOption) {
@@ -99,7 +116,12 @@ class ComparisonViewModel(
         val updated = if (current.contains(offerId)) {
             current - offerId
         } else {
-            current + offerId
+            if (current.size >= 4) {
+                // Keep max 4 selected offers for comparison table readability
+                (current.drop(1).toSet()) + offerId
+            } else {
+                current + offerId
+            }
         }
         _state.value = _state.value.copy(selectedOfferIds = updated)
         recompute()
@@ -124,18 +146,11 @@ class ComparisonViewModel(
         _state.value = _state.value.copy(selectedOfferForDetails = computedOffer)
     }
 
-    fun openOfficialDetails(offer: LoanOffer?) {
-        _state.value = _state.value.copy(selectedOfferForOfficialDetails = offer)
-    }
-
     fun resetFilters() {
-        val categoryOffers = _state.value.allOffers.filter { it.category == LoanCategory.PERSONAL }
         _state.value = _state.value.copy(
             searchQuery = "",
-            selectedCategory = LoanCategory.PERSONAL,
-            methodFilter = MethodFilter.ALL,
-            sortOption = ComparisonSortOption.TOTAL_COST,
-            selectedOfferIds = categoryOffers.take(3).map { it.id }.toSet(),
+            lenderTypeFilter = LenderTypeFilter.ALL,
+            sortOption = ComparisonSortOption.STARTING_RATE,
         )
         recompute()
     }
@@ -145,18 +160,23 @@ class ComparisonViewModel(
         val p = s.principal
         val t = s.tenureMonths
 
-        // Filter by category
         var filtered = s.allOffers.filter { it.category == s.selectedCategory }
 
-        // Filter by method
-        when (s.methodFilter) {
-            MethodFilter.REDUCING -> {
-                filtered = filtered.filter { it.interestMethod == InterestMethod.REDUCING_BALANCE }
+        // Filter by Lender Type
+        when (s.lenderTypeFilter) {
+            LenderTypeFilter.PUBLIC_BANK -> {
+                filtered = filtered.filter { it.lenderClassification == LenderClassification.PUBLIC_BANK }
             }
-            MethodFilter.FLAT -> {
-                filtered = filtered.filter { it.interestMethod == InterestMethod.FLAT }
+            LenderTypeFilter.PRIVATE_BANK -> {
+                filtered = filtered.filter { it.lenderClassification == LenderClassification.PRIVATE_BANK }
             }
-            MethodFilter.ALL -> Unit
+            LenderTypeFilter.NBFC -> {
+                filtered = filtered.filter { it.lenderClassification == LenderClassification.NBFC }
+            }
+            LenderTypeFilter.DIGITAL_LENDER -> {
+                filtered = filtered.filter { it.lenderClassification == LenderClassification.DIGITAL_LENDER }
+            }
+            LenderTypeFilter.ALL -> Unit
         }
 
         // Search query filter
@@ -164,9 +184,11 @@ class ComparisonViewModel(
             val q = s.searchQuery.trim().lowercase()
             filtered = filtered.filter {
                 it.lenderName.lowercase().contains(q) ||
-                    it.offerName.lowercase().contains(q) ||
+                    it.publishedInterestRate.lowercase().contains(q) ||
                     it.eligibilityNotes.lowercase().contains(q) ||
-                    it.category.label.lowercase().contains(q)
+                    it.publishedProcessingFee.lowercase().contains(q) ||
+                    it.lenderClassification.label.lowercase().contains(q) ||
+                    it.lenderClassification.shortLabel.lowercase().contains(q)
             }
         }
 
@@ -176,22 +198,43 @@ class ComparisonViewModel(
             OfferCalculator.compute(offer, p, t).copy(isSelectedForComparison = isSelected)
         }
 
-        // Determine lowest cost offer
-        val minCost = computedOffers.minOfOrNull { it.totalCost }
-        val lowestOfferId = if (computedOffers.isNotEmpty() && minCost != null) {
-            computedOffers.firstOrNull { it.totalCost == minCost }?.offer?.id
+        // Determine lowest cost among validly comparable offers
+        val comparableOffers = computedOffers.filter { it.totalCost != null }
+        val minCost = comparableOffers.minOfOrNull { it.totalCost!! }
+        val lowestOfferId = if (minCost != null) {
+            comparableOffers.firstOrNull { it.totalCost == minCost }?.offer?.id
         } else null
 
-        // Apply lowest cost flag
         val offersWithLowestCost = computedOffers.map {
             if (it.offer.id == lowestOfferId) it.copy(isLowestCost = true) else it
         }
 
-        // Sort displayed offers
+        // Sort displayed offers: only comparable starting rates sorted numerically; non-comparables come after
         val sortedOffers = when (s.sortOption) {
-            ComparisonSortOption.TOTAL_COST -> offersWithLowestCost.sortedBy { it.totalCost }
-            ComparisonSortOption.INTEREST_RATE -> offersWithLowestCost.sortedBy { it.offer.annualRatePercent }
-            ComparisonSortOption.MONTHLY_EMI -> offersWithLowestCost.sortedBy { it.installment }
+            ComparisonSortOption.STARTING_RATE -> {
+                offersWithLowestCost.sortedWith(
+                    compareBy<ComputedLoanOffer> { !it.offer.isComparableStartingRate }
+                        .thenBy { it.offer.annualRatePercent }
+                        .thenBy { it.offer.lenderName }
+                )
+            }
+            ComparisonSortOption.MONTHLY_EMI -> {
+                offersWithLowestCost.sortedWith(
+                    compareBy<ComputedLoanOffer> { it.installment == null }
+                        .thenBy { it.installment ?: Double.MAX_VALUE }
+                        .thenBy { it.offer.lenderName }
+                )
+            }
+            ComparisonSortOption.TOTAL_COST -> {
+                offersWithLowestCost.sortedWith(
+                    compareBy<ComputedLoanOffer> { it.totalCost == null }
+                        .thenBy { it.totalCost ?: Double.MAX_VALUE }
+                        .thenBy { it.offer.lenderName }
+                )
+            }
+            ComparisonSortOption.LENDER_NAME -> {
+                offersWithLowestCost.sortedBy { it.offer.lenderName }
+            }
         }
 
         // Comparison table offers: all selected offers computed for current terms

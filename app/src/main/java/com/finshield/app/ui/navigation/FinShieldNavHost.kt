@@ -191,6 +191,17 @@ fun FinShieldNavHost(navController: NavHostController = rememberNavController())
                     reportId = entry.arguments?.getString("id") ?: "sample",
                     onBack = { navController.popBackStack() },
                     onOpenCalculator = { navController.navigate(Routes.CALCULATOR) },
+                    onOpenCompleteBreakdown = { navController.navigate(Routes.completeBreakdown(it)) },
+                )
+            }
+            composable(
+                Routes.COMPLETE_BREAKDOWN,
+                arguments = listOf(navArgument("id") { type = NavType.StringType }),
+            ) { entry ->
+                com.finshield.app.ui.screens.analyzer.CompleteBreakdownScreen(
+                    reportId = entry.arguments?.getString("id") ?: "sample",
+                    onBack = { navController.popBackStack() },
+                    onOpenCalculator = { navController.navigate(Routes.CALCULATOR) },
                 )
             }
         }

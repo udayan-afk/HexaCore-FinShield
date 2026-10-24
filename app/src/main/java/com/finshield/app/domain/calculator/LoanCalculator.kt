@@ -127,4 +127,175 @@ object LoanCalculator {
         return if (errors.hasAny) Validation.Invalid(errors)
         else Validation.Valid(LoanInput(principal!!, rate!!, months, method, frequency))
     }
+
+    /**
+     * Calculates the exact outstanding principal balance remaining at the end of [monthNumber].
+     */
+    fun outstandingBalanceAfter(
+        principal: Double,
+        annualRatePercent: Double,
+        tenureMonths: Int,
+        monthNumber: Int,
+        method: InterestMethod = InterestMethod.REDUCING_BALANCE,
+    ): Double {
+        require(monthNumber >= 0) { "Month must be non-negative" }
+        if (monthNumber == 0) return principal
+        if (monthNumber >= tenureMonths) return 0.0
+
+        return when (method) {
+            InterestMethod.REDUCING_BALANCE -> {
+                val r = (annualRatePercent / 100.0) / 12.0
+                if (r == 0.0) {
+                    val emi = principal / tenureMonths
+                    (principal - emi * monthNumber).coerceAtLeast(0.0)
+                } else {
+                    val emi = emi(principal, r, tenureMonths)
+                    var balance = principal
+                    for (m in 1..monthNumber) {
+                        val interest = balance * r
+                        val principalPaid = emi - interest
+                        balance -= principalPaid
+                        if (balance <= 0.0) return 0.0
+                    }
+                    balance.coerceAtLeast(0.0)
+                }
+            }
+            InterestMethod.FLAT -> {
+                (principal * (1.0 - monthNumber.toDouble() / tenureMonths)).coerceAtLeast(0.0)
+            }
+        }
+    }
+
+    /**
+     * Computes net disbursal: Sanctioned Principal minus all upfront deductions explicitly deducted at disbursal.
+     */
+    fun calculateNetDisbursal(
+        sanctionedPrincipal: Double,
+        upfrontDeductions: Double,
+    ): Double = (sanctionedPrincipal - upfrontDeductions).coerceAtLeast(0.0)
+
+    /**
+     * Computes processing fee and taxes.
+     */
+    fun calculateProcessingFee(
+        principal: Double,
+        percentage: Double?,
+        fixedAmount: Double?,
+        gstRatePercent: Double? = 18.0,
+        isGstAlreadyIncluded: Boolean = false,
+    ): ProcessingFeeResult {
+        val rawFee = when {
+            fixedAmount != null -> fixedAmount
+            percentage != null -> principal * (percentage / 100.0)
+            else -> 0.0
+        }
+        val rate = gstRatePercent ?: 0.0
+        val gst = if (isGstAlreadyIncluded || rate == 0.0) 0.0 else rawFee * (rate / 100.0)
+        val total = if (isGstAlreadyIncluded) rawFee else rawFee + gst
+        val stated = when {
+            percentage != null -> "$percentage%"
+            fixedAmount != null -> Money.inr(fixedAmount)
+            else -> "—"
+        }
+        return ProcessingFeeResult(
+            feeAmount = rawFee,
+            gstRatePercent = rate,
+            gstAmount = gst,
+            totalWithGst = total,
+            rateStated = stated,
+            isGstIncluded = isGstAlreadyIncluded,
+        )
+    }
+
+    /**
+     * Computes percentage-based foreclosure charge with GST for a known outstanding balance.
+     */
+    fun calculateForeclosure(
+        outstandingPrincipal: Double,
+        feePercent: Double,
+        gstRatePercent: Double = 18.0,
+        isGstAssumed: Boolean = true,
+    ): ForeclosureCalculation {
+        val fee = outstandingPrincipal * (feePercent / 100.0)
+        val gst = fee * (gstRatePercent / 100.0)
+        return ForeclosureCalculation(
+            outstandingPrincipal = outstandingPrincipal,
+            feePercent = feePercent,
+            feeAmount = fee,
+            gstRatePercent = gstRatePercent,
+            gstAmount = gst,
+            totalCost = fee + gst,
+            isGstAssumed = isGstAssumed,
+        )
+    }
+
+    /**
+     * Illustrative late payment penalty calculation.
+     */
+    fun calculateIllustrativeLateFee(
+        emi: Double,
+        monthlyPenalRate: Double = 2.0,
+        fixedBounceFee: Double = 500.0,
+        monthsDelayed: Int = 1,
+    ): LatePaymentEstimate {
+        val interest = emi * (monthlyPenalRate / 100.0) * monthsDelayed
+        return LatePaymentEstimate(
+            overdueAmount = emi,
+            monthsDelayed = monthsDelayed,
+            penalRatePercentPerMonth = monthlyPenalRate,
+            penalInterest = interest,
+            fixedBounceFee = fixedBounceFee,
+            totalLateFee = interest + fixedBounceFee,
+        )
+    }
 }
+
+data class ProcessingFeeResult(
+    val feeAmount: Double,
+    val gstRatePercent: Double,
+    val gstAmount: Double,
+    val totalWithGst: Double,
+    val rateStated: String,
+    val isGstIncluded: Boolean,
+)
+
+data class ForeclosureCalculation(
+    val outstandingPrincipal: Double,
+    val feePercent: Double,
+    val feeAmount: Double,
+    val gstRatePercent: Double,
+    val gstAmount: Double,
+    val totalCost: Double,
+    val isGstAssumed: Boolean,
+)
+
+data class LatePaymentEstimate(
+    val overdueAmount: Double,
+    val monthsDelayed: Int,
+    val penalRatePercentPerMonth: Double,
+    val penalInterest: Double,
+    val fixedBounceFee: Double,
+    val totalLateFee: Double,
+)
+
+data class CalculatorPrefill(
+    val principal: Double?,
+    val rate: Double?,
+    val tenureMonths: Int?,
+    val method: InterestMethod? = null,
+)
+
+object CalculatorPrefillStore {
+    private var pending: CalculatorPrefill? = null
+
+    fun set(prefill: CalculatorPrefill) {
+        pending = prefill
+    }
+
+    fun consume(): CalculatorPrefill? {
+        val curr = pending
+        pending = null
+        return curr
+    }
+}
+

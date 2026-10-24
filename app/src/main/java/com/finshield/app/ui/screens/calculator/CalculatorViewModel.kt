@@ -30,6 +30,28 @@ class CalculatorViewModel : ViewModel() {
     private val _state = MutableStateFlow(CalculatorUiState())
     val state: StateFlow<CalculatorUiState> = _state.asStateFlow()
 
+    init {
+        com.finshield.app.domain.calculator.CalculatorPrefillStore.consume()?.let { prefill ->
+            _state.update { current ->
+                val pStr = prefill.principal?.let { p ->
+                    if (p % 1.0 == 0.0) p.toLong().toString() else p.toString()
+                } ?: current.principal
+                val rStr = prefill.rate?.let { r ->
+                    if (r % 1.0 == 0.0) r.toLong().toString() else r.toString()
+                } ?: current.rate
+                val tStr = prefill.tenureMonths?.toString() ?: current.tenure
+                current.copy(
+                    principal = pStr,
+                    rate = rStr,
+                    tenure = tStr,
+                    tenureInYears = false,
+                    method = prefill.method ?: current.method,
+                )
+            }
+            calculate()
+        }
+    }
+
     fun onPrincipal(v: String) = _state.update { it.copy(principal = v.filter { c -> c.isDigit() || c == '.' || c == ',' }, errors = it.errors.copy(principal = null)) }
     fun onRate(v: String) = _state.update { it.copy(rate = v.filter { c -> c.isDigit() || c == '.' }, errors = it.errors.copy(rate = null)) }
     fun onTenure(v: String) = _state.update { it.copy(tenure = v.filter { c -> c.isDigit() || c == '.' }, errors = it.errors.copy(tenure = null)) }
