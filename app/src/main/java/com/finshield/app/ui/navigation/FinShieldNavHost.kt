@@ -138,6 +138,12 @@ fun FinShieldNavHost(navController: NavHostController = rememberNavController())
                     onHistory = { navController.navigate(Routes.HISTORY) },
                     onOpenReport = openReport,
                     onProfile = { navController.navigate(Routes.PROFILE) { launchSingleTop = true } },
+                    onCreditHealth = { navController.navigate(Routes.CREDIT_HEALTH) },
+                )
+            }
+            composable(Routes.CREDIT_HEALTH) {
+                com.finshield.app.ui.screens.credit.CreditHealthScreen(
+                    onBack = { navController.popBackStack() },
                 )
             }
             composable(Routes.ANALYZE) {

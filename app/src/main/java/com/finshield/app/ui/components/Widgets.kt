@@ -211,13 +211,14 @@ fun ScreenScaffold(
     modifier: Modifier = Modifier,
     snackbarHostState: SnackbarHostState? = null,
     handleNavBarInset: Boolean = true,
+    leading: @Composable (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Scaffold(
         containerColor = AppBackground,
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
         snackbarHost = { if (snackbarHostState != null) SnackbarHost(snackbarHostState) },
-        topBar = { FinTopBar(title, subtitle, onBack, Modifier.statusBarsPadding()) },
+        topBar = { FinTopBar(title, subtitle, onBack, Modifier.statusBarsPadding(), leading = leading) },
     ) { inner ->
         Column(
             modifier

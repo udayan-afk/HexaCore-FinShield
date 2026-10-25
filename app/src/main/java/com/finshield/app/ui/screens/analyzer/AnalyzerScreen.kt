@@ -59,6 +59,7 @@ import com.finshield.app.ui.components.LinkText
 import com.finshield.app.ui.components.PrimaryButton
 import com.finshield.app.ui.components.ScreenScaffold
 import com.finshield.app.ui.components.SecondaryButton
+import com.finshield.app.ui.components.ShieldLogo
 import com.finshield.app.ui.components.StatusChip
 import com.finshield.app.ui.screens.auth.StatusBarIcons
 import com.finshield.app.ui.theme.AmberDark
@@ -159,6 +160,7 @@ fun AnalyzerScreen(
         onBack = onBack,
         snackbarHostState = snackbar,
         handleNavBarInset = false,
+        leading = { ShieldLogo(size = 32.dp) },
     ) {
         val doc = ui.document
 
@@ -172,25 +174,6 @@ fun AnalyzerScreen(
         )
 
         if (doc == null) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Text(
-                    "Submit loan agreement",
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = TextPrimary,
-                    textAlign = TextAlign.Center,
-                )
-                Text(
-                    "Choose how you want to provide your loan agreement for automated clause and mathematical verification.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary,
-                    textAlign = TextAlign.Center,
-                )
-            }
-
             // Action 1: Upload PDF
             ActionCard(
                 icon = Icons.Filled.FileUpload,
@@ -377,6 +360,7 @@ private fun SelectedDocumentCard(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
+                    ShieldLogo(size = 40.dp)
                     CircularProgressIndicator(
                         color = EmeraldDark,
                         strokeWidth = 3.dp,
@@ -398,14 +382,17 @@ private fun SelectedDocumentCard(
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    StatusChip("Ready for OCR", EmeraldTint, EmeraldDark)
-                    Text(
-                        "All pages ready to be read and cross-checked.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextSecondary,
-                    )
+                    ShieldLogo(size = 32.dp)
+                    Column(Modifier.weight(1f)) {
+                        StatusChip("Ready for OCR", EmeraldTint, EmeraldDark)
+                        Text(
+                            "All pages ready to be read and cross-checked.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary,
+                        )
+                    }
                 }
 
                 PrimaryButton(

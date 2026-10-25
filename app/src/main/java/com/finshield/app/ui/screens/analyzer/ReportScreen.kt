@@ -10,6 +10,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -675,33 +676,74 @@ private fun CompactLoanSnapshotSection(report: AnalysisReport) {
             }
 
             // Total Repayment Row
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(AppBackground, RoundedCornerShape(12.dp))
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column {
-                    Text(
-                        "Total Scheduled Repayment",
-                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
-                        color = TextSecondary,
-                    )
-                    Text(
-                        "${s.tenureMonths ?: 36} monthly installments • ${if (s.statedTotalRepayment != null) "Extracted from document" else "Independently calculated"}",
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                        color = TextHint,
-                    )
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val isNarrow = maxWidth < 340.dp
+                if (isNarrow) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(AppBackground, RoundedCornerShape(12.dp))
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            "Total Scheduled Repayment",
+                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                            color = TextSecondary,
+                        )
+                        Text(
+                            s.statedTotalRepayment?.let { Money.inr2(it) }
+                                ?: s.calculatedTotalRepayment?.let { Money.inr2(it) }
+                                ?: "Needs Confirmation",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = Navy,
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                        Text(
+                            "${s.tenureMonths ?: 36} monthly installments • ${if (s.statedTotalRepayment != null) "Extracted from document" else "Independently calculated"}",
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            color = TextHint,
+                        )
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(AppBackground, RoundedCornerShape(12.dp))
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            Text(
+                                "Total Scheduled Repayment",
+                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                                color = TextSecondary,
+                            )
+                            Text(
+                                "${s.tenureMonths ?: 36} monthly installments • ${if (s.statedTotalRepayment != null) "Extracted from document" else "Independently calculated"}",
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                color = TextHint,
+                            )
+                        }
+                        Text(
+                            s.statedTotalRepayment?.let { Money.inr2(it) }
+                                ?: s.calculatedTotalRepayment?.let { Money.inr2(it) }
+                                ?: "Needs Confirmation",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = Navy,
+                            textAlign = TextAlign.End,
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                    }
                 }
-                Text(
-                    s.statedTotalRepayment?.let { Money.inr2(it) }
-                        ?: s.calculatedTotalRepayment?.let { Money.inr2(it) }
-                        ?: "Needs Confirmation",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    color = Navy,
-                )
             }
         }
     }
@@ -725,9 +767,9 @@ private fun SnapshotTile(
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text(label, style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp), color = TextSecondary)
-        Text(value, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = color)
-        Text(sub, style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp), color = TextSecondary)
+        Text(label, style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp), color = TextSecondary, maxLines = 1)
+        Text(value, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = color, maxLines = 1, softWrap = false)
+        Text(sub, style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp), color = TextSecondary, maxLines = 1)
         if (!provenance.isNullOrBlank()) {
             Box(
                 modifier = Modifier
@@ -761,31 +803,73 @@ private fun EstimatedNetDisbursalCard(report: AnalysisReport) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column {
-                    Text(
-                        "ESTIMATED NET DISBURSAL",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.8.sp,
-                        ),
-                        color = EmeraldDark,
-                    )
-                    Text(
-                        "Amount transferred to your bank account",
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                        color = TextSecondary,
-                    )
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val isNarrow = maxWidth < 340.dp
+                if (isNarrow) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            "ESTIMATED NET DISBURSAL",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.8.sp,
+                            ),
+                            color = EmeraldDark,
+                        )
+                        Text(
+                            fb.estimatedNetDisbursal?.let { Money.inr2(it) } ?: "Needs Principal",
+                            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                            color = EmeraldDark,
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                        Text(
+                            "Amount transferred to your bank account",
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            color = TextSecondary,
+                        )
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            Text(
+                                "ESTIMATED NET DISBURSAL",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.8.sp,
+                                ),
+                                color = EmeraldDark,
+                            )
+                            Text(
+                                "Amount transferred to your bank account",
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                color = TextSecondary,
+                            )
+                        }
+                        Text(
+                            fb.estimatedNetDisbursal?.let { Money.inr2(it) } ?: "Needs Principal",
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 20.sp,
+                            ),
+                            color = EmeraldDark,
+                            textAlign = TextAlign.End,
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                    }
                 }
-                Text(
-                    fb.estimatedNetDisbursal?.let { Money.inr2(it) } ?: "Needs Principal",
-                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                    color = EmeraldDark,
-                )
             }
 
             HorizontalDivider(color = EmeraldDark.copy(alpha = 0.2f))
@@ -799,11 +883,15 @@ private fun EstimatedNetDisbursalCard(report: AnalysisReport) {
                     "Sanctioned Principal:",
                     style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
                     color = TextPrimary,
+                    modifier = Modifier.weight(1f).padding(end = 8.dp),
                 )
                 Text(
                     fb.sanctionedPrincipal?.let { Money.inr(it) } ?: "Needs confirmation",
                     style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
                     color = TextPrimary,
+                    textAlign = TextAlign.End,
+                    maxLines = 1,
+                    softWrap = false,
                 )
             }
 
@@ -816,11 +904,15 @@ private fun EstimatedNetDisbursalCard(report: AnalysisReport) {
                     "Total Upfront Deductions:",
                     style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
                     color = TextPrimary,
+                    modifier = Modifier.weight(1f).padding(end = 8.dp),
                 )
                 Text(
                     fb.totalUpfrontDeductions?.let { "- ${Money.inr(it)}" } ?: "₹0",
                     style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
                     color = if ((fb.totalUpfrontDeductions ?: 0.0) > 0) Rose else EmeraldDark,
+                    textAlign = TextAlign.End,
+                    maxLines = 1,
+                    softWrap = false,
                 )
             }
 

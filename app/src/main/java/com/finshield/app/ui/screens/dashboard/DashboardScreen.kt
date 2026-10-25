@@ -82,10 +82,12 @@ fun DashboardScreen(
     onHistory: () -> Unit,
     onOpenReport: (String) -> Unit,
     onProfile: () -> Unit,
+    onCreditHealth: () -> Unit = {},
     vm: HistoryViewModel = viewModel(),
 ) {
     StatusBarIcons(darkIcons = true)
     val history by vm.state.collectAsState()
+    val creditHealthState by com.finshield.app.data.AppContainer.creditHealth.state.collectAsState()
     val name = session.greetingName()
     val greeting = remember {
         when (Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) {
@@ -116,6 +118,12 @@ fun DashboardScreen(
 
         Column(Modifier.padding(horizontal = 18.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
             HeroCard(onAnalyze)
+
+            CreditHealthCard(
+                creditScoreData = creditHealthState.creditScore,
+                onCheckScore = onCreditHealth,
+                onCheckEligibility = onCreditHealth,
+            )
 
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Quick actions", style = MaterialTheme.typography.titleLarge, color = TextPrimary)

@@ -25,6 +25,10 @@ object AppContainer {
     val loanOffers: LoanOfferRepository
         get() = _loanOffers ?: AssetLoanOfferRepository.getInstance().also { _loanOffers = it }
 
+    private var _creditHealth: com.finshield.app.data.credit.CreditHealthRepository? = null
+    val creditHealth: com.finshield.app.data.credit.CreditHealthRepository
+        get() = _creditHealth ?: com.finshield.app.data.credit.CreditHealthRepository().also { _creditHealth = it }
+
     fun init(context: Context) {
         _loanOffers = AssetLoanOfferRepository.getInstance(context.applicationContext)
     }

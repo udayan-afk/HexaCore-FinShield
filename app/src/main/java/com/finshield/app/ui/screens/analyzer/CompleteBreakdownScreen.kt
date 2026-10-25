@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -188,21 +189,53 @@ private fun EstimatedNetDisbursalCard(report: AnalysisReport) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    "ESTIMATED NET DISBURSAL",
-                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp),
-                    color = EmeraldDark,
-                )
-                Text(
-                    fb.estimatedNetDisbursal?.let { Money.inr2(it) } ?: "Needs Principal",
-                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                    color = EmeraldDark,
-                )
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val isNarrow = maxWidth < 340.dp
+                if (isNarrow) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            "ESTIMATED NET DISBURSAL",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp),
+                            color = EmeraldDark,
+                        )
+                        Text(
+                            fb.estimatedNetDisbursal?.let { Money.inr2(it) } ?: "Needs Principal",
+                            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                            color = EmeraldDark,
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "ESTIMATED NET DISBURSAL",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp),
+                            color = EmeraldDark,
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 12.dp),
+                        )
+                        Text(
+                            fb.estimatedNetDisbursal?.let { Money.inr2(it) } ?: "Needs Principal",
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 20.sp,
+                            ),
+                            color = EmeraldDark,
+                            textAlign = TextAlign.End,
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                    }
+                }
             }
             Text(
                 "Sanctioned Principal: ${s.sanctionedPrincipal?.let { Money.inr2(it) } ?: "—"}  −  Total Upfront Deductions: ${fb.totalUpfrontDeductions?.let { Money.inr2(it) } ?: "₹0.00"}",
@@ -464,8 +497,18 @@ private fun DetailedBreakdownRow(
                 }
             }
         }
-        Column(horizontalAlignment = Alignment.End) {
-            Text(amount, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold), color = TextPrimary)
+        Column(
+            modifier = Modifier.padding(start = 8.dp),
+            horizontalAlignment = Alignment.End,
+        ) {
+            Text(
+                amount,
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                color = TextPrimary,
+                textAlign = TextAlign.End,
+                maxLines = 1,
+                softWrap = false,
+            )
             val (chipBg, chipText) = when (type) {
                 ChargeType.UPFRONT -> Pair(AmberTint, AmberDark)
                 ChargeType.RECURRING -> Pair(EmeraldTint, EmeraldDark)
@@ -794,11 +837,15 @@ private fun SummaryHighlightRow(
             label,
             style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
             color = if (isHighlight) EmeraldDark else TextPrimary,
+            modifier = Modifier.weight(1f).padding(end = 8.dp),
         )
         Text(
             if (isNegative && !value.startsWith("-")) "− $value" else value,
             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
             color = if (isHighlight) EmeraldDark else if (isNegative) Rose else TextPrimary,
+            textAlign = TextAlign.End,
+            maxLines = 1,
+            softWrap = false,
         )
     }
 }
