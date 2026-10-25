@@ -83,6 +83,7 @@ fun DashboardScreen(
     onOpenReport: (String) -> Unit,
     onProfile: () -> Unit,
     onCreditHealth: () -> Unit = {},
+    onAssistant: () -> Unit = {},
     vm: HistoryViewModel = viewModel(),
 ) {
     StatusBarIcons(darkIcons = true)
@@ -97,75 +98,85 @@ fun DashboardScreen(
         }
     }
 
-    Column(Modifier.fillMaxSize().background(AppBackground).verticalScroll(rememberScrollState())) {
-        // Header
-        Row(
-            Modifier.fillMaxWidth().background(CardWhite).statusBarsPadding().padding(horizontal = 20.dp, vertical = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(greeting, color = EmeraldDark, style = MaterialTheme.typography.labelSmall)
-                Text("Hi, $name", style = MaterialTheme.typography.headlineMedium, color = TextPrimary)
-                Text("Let's make your next loan clearer.", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
-            }
-            Box(
-                Modifier.size(48.dp).background(EmeraldTint, RoundedCornerShape(50)).clickable(onClick = onProfile),
-                contentAlignment = Alignment.Center,
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().background(AppBackground).verticalScroll(rememberScrollState())) {
+            // Header
+            Row(
+                Modifier.fillMaxWidth().background(CardWhite).statusBarsPadding().padding(horizontal = 20.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(initials(name), color = Navy, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
-            }
-        }
-
-        Column(Modifier.padding(horizontal = 18.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-            HeroCard(onAnalyze)
-
-            CreditHealthCard(
-                creditScoreData = creditHealthState.creditScore,
-                onCheckScore = onCreditHealth,
-                onCheckEligibility = onCreditHealth,
-            )
-
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Quick actions", style = MaterialTheme.typography.titleLarge, color = TextPrimary)
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    QuickAction(Icons.Filled.Calculate, EmeraldDark, EmeraldTint, "Loan\nCalculator", "Verify your EMI", onCalculator)
-                    QuickAction(Icons.Filled.SwapHoriz, InfoBlue, InfoBlueTint, "Compare\nLoans", "Find better value", onCompare)
-                    QuickAction(Icons.Filled.History, Amber, AmberTint, "Analysis\nHistory", "Past reviews", onHistory)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(greeting, color = EmeraldDark, style = MaterialTheme.typography.labelSmall)
+                    Text("Hi, $name", style = MaterialTheme.typography.headlineMedium, color = TextPrimary)
+                    Text("Let's make your next loan clearer.", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                }
+                Box(
+                    Modifier.size(48.dp).background(EmeraldTint, RoundedCornerShape(50)).clickable(onClick = onProfile),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(initials(name), color = Navy, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
                 }
             }
 
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                SectionHeader("Recent analyses", action = "View all", onAction = onHistory)
-                when (val h = history) {
-                    HistoryState.Loading -> LoadingBlock()
-                    is HistoryState.Error -> ErrorState(h.message, onRetry = vm::retry)
-                    is HistoryState.Content -> {
-                        if (h.items.isEmpty()) {
-                            EmptyState(Icons.Filled.Description, "No analyses yet", "Analyze an agreement to see it here.") {
-                                SecondaryButton("Analyze Agreement", onAnalyze, modifier = Modifier.padding(horizontal = 32.dp))
+            Column(Modifier.padding(horizontal = 18.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                HeroCard(onAnalyze)
+
+                CreditHealthCard(
+                    creditScoreData = creditHealthState.creditScore,
+                    onCheckScore = onCreditHealth,
+                    onCheckEligibility = onCreditHealth,
+                )
+
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Quick actions", style = MaterialTheme.typography.titleLarge, color = TextPrimary)
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        QuickAction(Icons.Filled.Calculate, EmeraldDark, EmeraldTint, "Loan\nCalculator", "Verify your EMI", onCalculator)
+                        QuickAction(Icons.Filled.SwapHoriz, InfoBlue, InfoBlueTint, "Compare\nLoans", "Find better value", onCompare)
+                        QuickAction(Icons.Filled.History, Amber, AmberTint, "Analysis\nHistory", "Past reviews", onHistory)
+                    }
+                }
+
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    SectionHeader("Recent analyses", action = "View all", onAction = onHistory)
+                    when (val h = history) {
+                        HistoryState.Loading -> LoadingBlock()
+                        is HistoryState.Error -> ErrorState(h.message, onRetry = vm::retry)
+                        is HistoryState.Content -> {
+                            if (h.items.isEmpty()) {
+                                EmptyState(Icons.Filled.Description, "No analyses yet", "Analyze an agreement to see it here.") {
+                                    SecondaryButton("Analyze Agreement", onAnalyze, modifier = Modifier.padding(horizontal = 32.dp))
+                                }
+                            } else {
+                                h.items.take(2).forEach { AnalysisRow(it, onClick = { onOpenReport(it.id) }) }
                             }
-                        } else {
-                            h.items.take(2).forEach { AnalysisRow(it, onClick = { onOpenReport(it.id) }) }
                         }
                     }
                 }
-            }
 
-            Row(
-                Modifier.fillMaxWidth().background(InfoBlueTint, RoundedCornerShape(18.dp)).padding(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Icon(Icons.Filled.Lightbulb, null, tint = InfoBlue, modifier = Modifier.size(22.dp))
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("FINSHIELD TIP", color = InfoBlue, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp))
-                    Text(
-                        "A lower interest rate may not mean a cheaper loan. Always compare processing fees and total repayment.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TextPrimary,
-                    )
+                Row(
+                    Modifier.fillMaxWidth().background(InfoBlueTint, RoundedCornerShape(18.dp)).padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Icon(Icons.Filled.Lightbulb, null, tint = InfoBlue, modifier = Modifier.size(22.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("FINSHIELD TIP", color = InfoBlue, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp))
+                        Text(
+                            "A lower interest rate may not mean a cheaper loan. Always compare processing fees and total repayment.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextPrimary,
+                        )
+                    }
                 }
             }
         }
+
+        // Floating Assistant Action Button
+        AssistantFab(
+            onClick = onAssistant,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 18.dp, bottom = 18.dp),
+        )
     }
 }
 

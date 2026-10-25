@@ -17,6 +17,7 @@ object Routes {
     const val REPORT = "report/{id}"
     const val COMPLETE_BREAKDOWN = "complete_breakdown/{id}"
     const val CREDIT_HEALTH = "credit_health"
+    const val ASSISTANT = "assistant"
 
     fun ocrReview(id: String) = "ocr_review/$id"
     fun report(id: String) = "report/$id"
@@ -26,5 +27,5 @@ object Routes {
     val bottomTabs = listOf(DASHBOARD, ANALYZE, COMPARE, PROFILE)
 
     /** Everything behind authenticated Firebase sign-in. */
-    val protectedRoutes = setOf(DASHBOARD, ANALYZE, COMPARE, PROFILE, CALCULATOR, HISTORY, OCR_REVIEW, REPORT, COMPLETE_BREAKDOWN, CREDIT_HEALTH)
+    val protectedRoutes = setOf(DASHBOARD, ANALYZE, COMPARE, PROFILE, CALCULATOR, HISTORY, OCR_REVIEW, REPORT, COMPLETE_BREAKDOWN, CREDIT_HEALTH, ASSISTANT)
 }

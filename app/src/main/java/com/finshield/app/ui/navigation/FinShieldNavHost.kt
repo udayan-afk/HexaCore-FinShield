@@ -139,10 +139,16 @@ fun FinShieldNavHost(navController: NavHostController = rememberNavController())
                     onOpenReport = openReport,
                     onProfile = { navController.navigate(Routes.PROFILE) { launchSingleTop = true } },
                     onCreditHealth = { navController.navigate(Routes.CREDIT_HEALTH) },
+                    onAssistant = { navController.navigate(Routes.ASSISTANT) },
                 )
             }
             composable(Routes.CREDIT_HEALTH) {
                 com.finshield.app.ui.screens.credit.CreditHealthScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(Routes.ASSISTANT) {
+                com.finshield.app.ui.screens.assistant.AssistantScreen(
                     onBack = { navController.popBackStack() },
                 )
             }
@@ -172,6 +178,7 @@ fun FinShieldNavHost(navController: NavHostController = rememberNavController())
                 ProfileScreen(
                     session = session,
                     onHistory = { navController.navigate(Routes.HISTORY) },
+                    onAssistant = { navController.navigate(Routes.ASSISTANT) },
                     onSignOut = { auth.signOut() },
                 )
             }
